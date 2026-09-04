@@ -25,6 +25,20 @@ values
   ('00000000-0000-0000-0000-000000000000','11111111-1111-4111-8111-000000000008','authenticated','authenticated','consulta@pmocontabil.dev',crypt('Pmo@2026', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}','{"full_name":"Bruno Castro"}',  now(), now())
 on conflict (id) do nothing;
 
+-- Insercao direta em auth.users (fora do fluxo normal de cadastro do GoTrue)
+-- deixa os campos de token com NULL. O GoTrue espera string vazia nesses
+-- campos e falha no login com "Database error querying schema" caso contrario.
+update auth.users set
+  confirmation_token = coalesce(confirmation_token, ''),
+  recovery_token = coalesce(recovery_token, ''),
+  email_change_token_new = coalesce(email_change_token_new, ''),
+  email_change = coalesce(email_change, ''),
+  email_change_token_current = coalesce(email_change_token_current, ''),
+  phone_change = coalesce(phone_change, ''),
+  phone_change_token = coalesce(phone_change_token, ''),
+  reauthentication_token = coalesce(reauthentication_token, '')
+where email like '%@pmocontabil.dev';
+
 insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
 select gen_random_uuid(), u.id, u.id::text,
        jsonb_build_object('sub', u.id::text, 'email', u.email), 'email', now(), now(), now()
