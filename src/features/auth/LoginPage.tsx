@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { LineChart, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/app/AuthProvider';
 import { Button } from '@/components/ui/Button';
@@ -130,6 +130,11 @@ export function LoginPage() {
             <Button type="submit" size="lg" className="w-full justify-center" loading={submitting} disabled={!configured}>
               Entrar
             </Button>
+
+            <p className="text-center text-sm text-muted">
+              Ainda nao tem conta?{' '}
+              <Link to="/cadastro" className="text-brand hover:underline">Criar conta</Link>
+            </p>
           </form>
         </div>
       </div>

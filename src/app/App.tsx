@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { Spinner } from '@/components/ui/Feedback';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { SignupPage } from '@/features/auth/SignupPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 
 // Route splitting: cada modulo pesado entra em seu proprio chunk.
@@ -30,6 +31,7 @@ export function App() {
       <Suspense fallback={<Spinner />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/cadastro" element={<SignupPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppShell />}>
               <Route index element={<DashboardPage />} />
