@@ -1,0 +1,131 @@
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { logAppEvent } from '@/lib/supabase/audit';
+import type { Profile, RoleKey } from '@/types/domain';
+
+interface AuthApi {
+  session: Session | null;
+  profile: Profile | null;
+  loading: boolean;
+  configured: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  /** RBAC de interface. A autorizacao real e' aplicada por RLS no PostgreSQL. */
+  can: (capability: Capability) => boolean;
+  hasRole: (...roles: RoleKey[]) => boolean;
+}
+
+/**
+ * Capacidades de UI. Servem para nao oferecer acoes que o banco vai recusar -
+ * jamais como mecanismo de seguranca (o backend e' a fonte de verdade).
+ */
+export type Capability =
+  | 'portfolio.manage'
+  | 'project.create'
+  | 'project.write'
+  | 'settings.manage'
+  | 'users.manage'
+  | 'audit.read'
+  | 'templates.manage'
+  | 'customfields.manage'
+  | 'calendar.manage'
+  | 'decision.decide'
+  | 'reports.export';
+
+const matrix: Record<Capability, RoleKey[]> = {
+  'portfolio.manage': ['admin', 'pmo'],
+  'project.create': ['admin', 'pmo', 'project_owner'],
+  'project.write': ['admin', 'pmo', 'project_owner', 'collaborator'],
+  'settings.manage': ['admin'],
+  'users.manage': ['admin'],
+  'audit.read': ['admin', 'pmo', 'auditor'],
+  'templates.manage': ['admin', 'pmo'],
+  'customfields.manage': ['admin', 'pmo'],
+  'calendar.manage': ['admin', 'pmo'],
+  'decision.decide': ['admin', 'pmo', 'sponsor'],
+  'reports.export': ['admin', 'pmo', 'auditor', 'sponsor', 'project_owner'],
+};
+
+const AuthContext = createContext<AuthApi | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(isSupabaseConfigured);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let active = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      if (!data.session) setLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next);
+      if (!next) {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => { active = false; sub.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    let active = true;
+    setLoading(true);
+    supabase
+      .from('profiles')
+      .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        setProfile((data as Profile) ?? null);
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const api = useMemo<AuthApi>(() => ({
+    session,
+    profile,
+    loading,
+    configured: isSupabaseConfigured,
+    signIn: async (email, password) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await logAppEvent('login', 'auth');
+    },
+    signOut: async () => {
+      await logAppEvent('logout', 'auth');
+      await supabase.auth.signOut();
+      setProfile(null);
+    },
+    refreshProfile: async () => {
+      if (!session?.user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      setProfile((data as Profile) ?? null);
+    },
+    can: (capability) => (profile ? matrix[capability].includes(profile.role) : false),
+    hasRole: (...roles) => (profile ? roles.includes(profile.role) : false),
+  }), [session, profile, loading]);
+
+  return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthApi {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth precisa estar dentro de <AuthProvider>');
+  return ctx;
+}
