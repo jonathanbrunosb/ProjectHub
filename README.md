@@ -98,14 +98,40 @@ progressos, riscos, custos, owners e prazos distintos.
 3. Faça push na `main`. O workflow `deploy.yml` builda, verifica a ausência de
    segredos no bundle e publica.
 
-O `base` do Vite é injetado pelo workflow (`VITE_BASE_PATH=/<repo>/`) e a aplicação usa
-`HashRouter`, porque o GitHub Pages é estático e não reescreve rotas — sem isso, um
-*deep link* retornaria 404 no refresh.
+A aplicação usa `HashRouter`, porque o GitHub Pages é estático e não reescreve rotas —
+sem isso, um *deep link* retornaria 404 no refresh.
+
+### Domínio próprio (subdomínio)
+
+O projeto está configurado para servir em `projecthub.contabilidade-eqtl.com`, via
+`public/CNAME` (publicado junto do build) e `VITE_BASE_PATH=/` no workflow — um domínio
+próprio serve a aplicação na raiz, diferente do padrão `<usuário>.github.io/<repo>/`.
+
+1. **No provedor de DNS do domínio `contabilidade-eqtl.com`** (ex.: a *hosted zone* no
+   Route 53, se foi lá que o domínio foi registrado), crie um registro:
+   - Tipo: `CNAME`
+   - Nome: `projecthub`
+   - Valor: `<usuário-ou-organização-github>.github.io`
+   - TTL: padrão (300–3600s)
+
+   Isso não abre nenhuma relação de custo nova com a AWS além da *hosted zone* que já
+   existe para o domínio — é só um registro de DNS apontando para fora.
+
+2. **No GitHub:** Settings → Pages → **Custom domain** → digite
+   `projecthub.contabilidade-eqtl.com` → Save. Depois que o DNS propagar, marque
+   **Enforce HTTPS**.
+
+3. A propagação do DNS costuma levar de alguns minutos a algumas horas.
+
+Para voltar ao domínio padrão do GitHub Pages, remova `public/CNAME`, limpe o campo
+*Custom domain* nas Settings → Pages, e mude `VITE_BASE_PATH` de volta para
+`/${{ github.event.repository.name }}/` no workflow.
 
 ### Configuração do Supabase
 
-Em **Authentication → URL Configuration**, adicione a URL do Pages
-(`https://<usuario>.github.io/<repo>/`) em *Site URL* e *Redirect URLs*.
+Em **Authentication → URL Configuration**, adicione a URL final (a do domínio próprio,
+se configurado; senão a do `github.io`) em *Site URL* e *Redirect URLs*:
+`https://projecthub.contabilidade-eqtl.com/`
 
 ---
 

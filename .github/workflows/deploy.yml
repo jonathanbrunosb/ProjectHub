@@ -34,8 +34,9 @@ jobs:
           # configure as duas variaveis em Settings > Secrets and variables > Actions.
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          # GitHub Pages serve em /<repo>/; o base path precisa refletir isso.
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          # Dominio proprio (public/CNAME) serve o app na raiz. Sem esse arquivo,
+          # o GitHub Pages usaria /<repo>/ e o base path precisaria refletir isso.
+          VITE_BASE_PATH: /
         run: npm run build
 
       - name: Verificar que nenhum segredo entrou no bundle
