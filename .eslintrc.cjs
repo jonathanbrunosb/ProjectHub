@@ -6,7 +6,9 @@ module.exports = {
     'plugin:@typescript-eslint/recommended',
     'plugin:react-hooks/recommended',
   ],
-  ignorePatterns: ['dist', 'node_modules', '*.cjs', 'vite.config.ts'],
+  // supabase/functions roda no Deno Edge Runtime, nao no Node/Vite deste
+  // projeto - globals (Deno) e imports (npm:) diferentes, escopo separado.
+  ignorePatterns: ['dist', 'node_modules', '*.cjs', 'vite.config.ts', 'supabase/functions/**'],
   parser: '@typescript-eslint/parser',
   parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } },
   plugins: ['react-refresh', '@typescript-eslint'],
