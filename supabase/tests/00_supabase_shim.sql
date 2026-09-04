@@ -23,6 +23,16 @@ create table if not exists auth.users (
   email_confirmed_at timestamptz,
   raw_app_meta_data jsonb,
   raw_user_meta_data jsonb,
+  -- Campos de token do GoTrue real: o seed os normaliza para '' apos o
+  -- insert (ver supabase/seed.sql), entao o shim precisa te-los tambem.
+  confirmation_token text,
+  recovery_token text,
+  email_change_token_new text,
+  email_change text,
+  email_change_token_current text,
+  phone_change text,
+  phone_change_token text,
+  reauthentication_token text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
