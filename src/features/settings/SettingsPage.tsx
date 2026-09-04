@@ -18,8 +18,9 @@ import { supabase, describeError } from '@/lib/supabase/client';
 import {
   deleteDefinition, listAllDefinitions, replaceOptions, upsertDefinition,
 } from '@/services/customFields';
-import { listProfiles, listTeams, listTemplates } from '@/services/projects';
+import { listCompanies, listProfiles, listTeams, listTemplates } from '@/services/projects';
 import { refreshAllHealth } from '@/services/governance';
+import { inviteUser } from '@/services/adminUsers';
 import { roleDescription, roleLabel } from '@/utils/domain-labels';
 import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, RoleKey } from '@/types/domain';
 
@@ -130,11 +131,20 @@ function ProfileTab() {
 }
 
 // ---------------------------------------------------------------------------
+const blankInvite = {
+  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '',
+};
+
 function UsersTab() {
   const { can, profile } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles });
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState(blankInvite);
+
+  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen });
+  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen });
 
   const changeRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: RoleKey }) => {
@@ -148,10 +158,39 @@ function UsersTab() {
     onError: (e) => toast.error('Nao foi possivel alterar o papel', describeError(e)),
   });
 
+  const invite = useMutation({
+    mutationFn: async () => {
+      if (!inviteForm.full_name.trim() || !inviteForm.email.trim()) {
+        throw new Error('Informe nome e e-mail.');
+      }
+      return inviteUser({
+        email: inviteForm.email.trim(),
+        full_name: inviteForm.full_name.trim(),
+        role: inviteForm.role,
+        job_title: inviteForm.job_title || null,
+        company_id: inviteForm.company_id || null,
+        primary_team_id: inviteForm.primary_team_id || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Convite enviado', `${inviteForm.full_name} recebera um e-mail para definir a senha.`);
+      setInviteOpen(false);
+      setInviteForm(blankInvite);
+    },
+    onError: (e) => toast.error('Nao foi possivel cadastrar o usuario', describeError(e)),
+  });
+
   if (isLoading) return <Spinner />;
 
   return (
     <>
+      {can('users.manage') && (
+        <div className="mb-4 flex justify-end">
+          <Button onClick={() => setInviteOpen(true)} icon={<Plus className="h-4 w-4" />}>Adicionar usuário</Button>
+        </div>
+      )}
+
       <div className="card mb-4 p-4 text-sm">
         <h2 className="mb-2 flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-ok" /> Modelo de permissoes</h2>
         <dl className="grid gap-2 sm:grid-cols-2">
@@ -202,6 +241,48 @@ function UsersTab() {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Adicionar usuário"
+        description="A pessoa recebe um e-mail com um link para definir a propria senha. O papel de acesso ja sai definido conforme escolhido aqui."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setInviteOpen(false)}>Cancelar</Button>
+            <Button onClick={() => invite.mutate()} loading={invite.isPending}>Enviar convite</Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nome completo" required className="sm:col-span-2">
+            <Input value={inviteForm.full_name} onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))} />
+          </Field>
+          <Field label="E-mail" required className="sm:col-span-2">
+            <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
+          </Field>
+          <Field label="Papel de acesso" required>
+            <Select value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as RoleKey }))}>
+              {(Object.keys(roleLabel) as RoleKey[]).map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
+            </Select>
+          </Field>
+          <Field label="Cargo">
+            <Input value={inviteForm.job_title} onChange={(e) => setInviteForm((f) => ({ ...f, job_title: e.target.value }))} />
+          </Field>
+          <Field label="Empresa">
+            <Select value={inviteForm.company_id} onChange={(e) => setInviteForm((f) => ({ ...f, company_id: e.target.value }))}>
+              <option value="">Nao informado</option>
+              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Equipe">
+            <Select value={inviteForm.primary_team_id} onChange={(e) => setInviteForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+              <option value="">Sem equipe</option>
+              {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </Modal>
     </>
   );
 }
