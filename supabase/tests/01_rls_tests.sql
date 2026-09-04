@@ -6,7 +6,7 @@
 -- Qualquer falha aborta com ERROR.
 -- =============================================================================
 \set ON_ERROR_STOP on
-set client_min_messages = warning;
+set client_min_messages = notice;
 
 create or replace function pg_temp.assert(p_cond boolean, p_msg text)
 returns void language plpgsql as $$

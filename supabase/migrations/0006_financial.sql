@@ -93,19 +93,22 @@ select
 from public.financial_entries
 group by project_id, reference_month;
 
--- Mantem apenas uma revisao vigente por projeto
+-- Mantem apenas uma revisao vigente por projeto.
+-- Precisa ser BEFORE: o indice unico parcial project_budgets_current_uk e
+-- avaliado no momento da gravacao da linha, entao a revisao anterior tem de
+-- ser liberada antes, e nao depois.
 create or replace function app.budgets_single_current()
 returns trigger language plpgsql security definer set search_path = public, app as $$
 begin
-  if new.is_current then
-    update public.project_budgets
-       set is_current = false
-     where project_id = new.project_id and id <> new.id and is_current;
-  end if;
+  update public.project_budgets
+     set is_current = false
+   where project_id = new.project_id
+     and id is distinct from new.id
+     and is_current;
   return new;
 end $$;
 
-create trigger trg_budget_single_current after insert or update of is_current on public.project_budgets
+create trigger trg_budget_single_current before insert or update of is_current on public.project_budgets
   for each row when (new.is_current) execute function app.budgets_single_current();
 
 select app.attach_stamps('public.project_budgets');

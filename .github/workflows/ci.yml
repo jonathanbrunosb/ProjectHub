@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (typecheck, lint, testes, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -p tsconfig.app.json --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes unitarios e de componente
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verificar que nenhum segredo entrou no bundle
+        run: |
+          set -e
+          # A chave service_role NUNCA pode estar no bundle publicado.
+          if grep -rIlE 'service_role|SUPABASE_SERVICE_ROLE|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' dist/ 2>/dev/null; then
+            echo "::error::Possivel segredo encontrado no bundle de producao."
+            exit 1
+          fi
+          echo "Nenhum segredo encontrado no bundle."
+
+  database:
+    name: Banco de dados (schema, seed, RLS, regras de negocio)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Aplicar migrations, seed e rodar os testes
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: ./supabase/tests/run.sh
