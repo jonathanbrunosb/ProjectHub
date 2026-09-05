@@ -222,6 +222,12 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 
 ## Riscos técnicos a acompanhar
 
+- **Dependências de terceiros.** `npm audit --omit=dev` está em **zero vulnerabilidades**
+  e deve continuar assim: rode-o a cada nova dependência. O `package.json` fixa
+  `overrides.uuid` porque o ExcelJS traz uma versão antiga transitivamente. O React Router
+  está na 7 — a 6 acumulava dois alertas moderados (open redirect em `Link`/`useNavigate`
+  e injeção via `deserializeErrors` no SSR), nenhum alcançável neste código, mas o upgrade
+  saiu barato e fecha a porta antes de alguém adicionar um `?returnTo=` pós-login.
 - **Duplicação operacional.** Dois projetos significam duas execuções de migration, dois
   deploys de Edge Function e dois conjuntos de segredos. É o custo consciente de tornar a
   contaminação QA→PRD fisicamente impossível. Mitigue automatizando a aplicação de

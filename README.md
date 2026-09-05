@@ -29,7 +29,7 @@ e leitura executiva em segundos.
 
 ## Stack
 
-- **Frontend:** React 18 + TypeScript + Vite, Tailwind CSS, TanStack Query/Table, React Router, Recharts, Zod
+- **Frontend:** React 18 + TypeScript + Vite, Tailwind CSS, TanStack Query/Table, React Router 7, Recharts, Zod
 - **Backend/BaaS:** Supabase — PostgreSQL, Auth, Storage privado, Edge Functions
 - **Segurança:** RBAC na aplicação + **RLS no PostgreSQL** em todas as tabelas expostas
 - **Deploy:** GitHub Actions → GitHub Pages (frontend estático; persistência no Supabase)
