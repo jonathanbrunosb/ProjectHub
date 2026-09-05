@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { nextRiskCode, upsertRisk, type RiskWithContext } from '@/services/risks';
-import { listProfiles } from '@/services/projects';
+import { listActiveProfiles } from '@/services/projects';
 import { criticalityLabel, criticalityTone, riskCriticality, riskStatusLabel, riskStrategyLabel } from '@/utils/domain-labels';
 
 const blank = {
@@ -23,7 +23,7 @@ export function RiskModal({
   const toast = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(blank);
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles, enabled: open });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
 
   useEffect(() => {
     if (!open) return;

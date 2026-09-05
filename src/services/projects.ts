@@ -155,10 +155,31 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 
 // --- Cadastros de apoio (usados em formularios e filtros) -------------------
 
+const PROFILE_COLUMNS =
+  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
+
+/**
+ * Todos os perfis, ativos ou nao. Uso: gestao de usuarios (Admin precisa ver
+ * quem esta inativo para poder reativar) e filtros historicos como a trilha
+ * de auditoria (uma acao antiga pode ter sido de alguem hoje inativo).
+ */
 export async function listProfiles(): Promise<Profile[]> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
+    .select(PROFILE_COLUMNS)
+    .order('full_name');
+  if (error) throw error;
+  return (data ?? []) as unknown as Profile[];
+}
+
+/**
+ * So' perfis ativos. Uso: seletores de responsavel (owner, sponsor, assignee,
+ * decisor) - nao faz sentido atribuir trabalho novo a alguem inativo.
+ */
+export async function listActiveProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(PROFILE_COLUMNS)
     .eq('active', true)
     .order('full_name');
   if (error) throw error;

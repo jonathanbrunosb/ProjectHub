@@ -57,7 +57,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 112 testes de frontend (Vitest + Testing Library)
+npm run test                # 113 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 

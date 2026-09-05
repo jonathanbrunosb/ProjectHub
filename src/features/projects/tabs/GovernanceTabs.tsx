@@ -16,7 +16,7 @@ import {
   createStatusReport, listDecisions, listIndicators, listMeasurements, listStatusReports,
   nextDecisionCode, publishStatusReport, upsertDecision, upsertIndicator, updateStatusReport,
 } from '@/services/governance';
-import { listProfiles } from '@/services/projects';
+import { listActiveProfiles } from '@/services/projects';
 import { formatDate, formatDateTime, formatNumber, formatPercent, toISODate } from '@/utils/format';
 import { decisionStatusLabel, statusReportStateLabel, statusReportStateTone } from '@/utils/domain-labels';
 import type { Decision, Indicator, StatusReport } from '@/types/domain';
@@ -35,7 +35,7 @@ export function DecisionsTab({ projectId, canEdit, canDecide }: { projectId: str
   });
 
   const decisions = useQuery({ queryKey: ['decisions', projectId], queryFn: () => listDecisions(projectId) });
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles, enabled: open });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
 
   const save = useMutation({
     mutationFn: async () => {

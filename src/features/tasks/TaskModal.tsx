@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { createTask, deleteTask, nextTaskCode, updateTask, type TaskWithContext } from '@/services/tasks';
-import { listProfiles } from '@/services/projects';
+import { listActiveProfiles } from '@/services/projects';
 import { priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
 import type { Priority, TaskStatus } from '@/types/domain';
 
@@ -32,7 +32,7 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
   const [form, setForm] = useState(blank);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles, enabled: open });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
 
   useEffect(() => {
     if (!open) return;

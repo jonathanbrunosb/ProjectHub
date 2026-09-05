@@ -18,8 +18,9 @@ const profiles = [
   { id: 'user-2', full_name: 'Colaborador Dois', email: 'colab@empresa.com.br', job_title: null, role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: true },
 ];
 
+const listProfiles = vi.fn(async () => profiles);
 vi.mock('@/services/projects', () => ({
-  listProfiles: vi.fn(async () => profiles),
+  listProfiles: (...args: []) => listProfiles(...args),
   listCompanies: vi.fn(async () => []),
   listTeams: vi.fn(async () => []),
   listTemplates: vi.fn(async () => []),
@@ -69,6 +70,8 @@ beforeEach(() => {
   deleteUser.mockClear();
   updateEq.mockClear();
   update.mockClear();
+  listProfiles.mockClear();
+  listProfiles.mockImplementation(async () => profiles);
 });
 
 describe('redefinicao de senha pelo Admin', () => {
@@ -173,6 +176,21 @@ describe('ativar / inativar usuario', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: /^inativar$/i }).length).toBeGreaterThan(1));
     await userEvent.click(lastOf(screen.getAllByRole('button', { name: /^inativar$/i })));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ active: false }));
+  });
+
+  it('mantem o usuario inativo visivel na lista, com a acao Ativar disponivel', async () => {
+    listProfiles.mockImplementationOnce(async () => [
+      ...profiles,
+      {
+        id: 'user-3', full_name: 'Ex Colaborador', email: 'ex@empresa.com.br', job_title: null,
+        role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: false,
+      },
+    ]);
+    render();
+    expect(await screen.findByText('Ex Colaborador')).toBeInTheDocument();
+    const linha = screen.getByText('Ex Colaborador').closest('tr')!;
+    expect(within(linha).getByText(/inativo/i)).toBeInTheDocument();
+    expect(within(linha).getByRole('button', { name: /^ativar$/i })).toBeInTheDocument();
   });
 });
 

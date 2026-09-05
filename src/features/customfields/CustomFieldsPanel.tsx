@@ -8,7 +8,7 @@ import { describeError } from '@/lib/supabase/client';
 import {
   fromTypedValue, listApplicableDefinitions, listValues, saveValues,
 } from '@/services/customFields';
-import { listProfiles, listTeams } from '@/services/projects';
+import { listActiveProfiles, listTeams } from '@/services/projects';
 import { formatCurrency } from '@/utils/format';
 
 /**
@@ -39,7 +39,7 @@ export function CustomFieldsPanel({
     queryFn: () => listValues(recordId),
   });
 
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams });
 
   const byDefinition = useMemo(() => {

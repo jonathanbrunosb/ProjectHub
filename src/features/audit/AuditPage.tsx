@@ -35,7 +35,7 @@ export function AuditPage() {
   const [detail, setDetail] = useState<AuditLogEntry | null>(null);
   const [filters, setFilters] = useState({ userId: '', projectId: '', entity: '', action: '', from: '', to: '' });
 
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles });
+  const profiles = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles });
   const projects = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
 
   const { data = [], isLoading, isError, error, refetch } = useQuery({

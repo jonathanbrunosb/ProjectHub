@@ -8,7 +8,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import {
-  createProject, listCompanies, listProfiles, listTeams, listTemplates,
+  createProject, listActiveProfiles, listCompanies, listTeams, listTemplates,
 } from '@/services/projects';
 import { toISODate } from '@/utils/format';
 import { priorityLabel } from '@/utils/domain-labels';
@@ -39,7 +39,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const templates = useQuery({ queryKey: ['templates'], queryFn: listTemplates, enabled: open });
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles, enabled: open });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: open });
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: open });
 
