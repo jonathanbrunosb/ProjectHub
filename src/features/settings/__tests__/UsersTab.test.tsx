@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { renderWithProviders } from '@/test/utils';
@@ -33,10 +33,22 @@ vi.mock('@/services/customFields', () => ({
 vi.mock('@/services/governance', () => ({ refreshAllHealth: vi.fn() }));
 
 const resetUserPassword = vi.fn();
+const deleteUser = vi.fn();
 vi.mock('@/services/adminUsers', () => ({
   createUser: vi.fn(),
   resetUserPassword: (userId: string) => resetUserPassword(userId),
+  deleteUser: (userId: string) => deleteUser(userId),
 }));
+
+const updateEq = vi.fn(async (_column: string, _value: string) => ({ error: null }));
+const update = vi.fn((_payload: Record<string, unknown>) => ({ eq: updateEq }));
+vi.mock('@/lib/supabase/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/client')>();
+  return {
+    ...actual,
+    supabase: { from: () => ({ update: (payload: Record<string, unknown>) => update(payload) }) },
+  };
+});
 
 const { SettingsPage } = await import('../SettingsPage');
 
@@ -48,7 +60,16 @@ function render() {
   );
 }
 
-beforeEach(() => resetUserPassword.mockClear());
+function lastOf<T>(items: T[]): T {
+  return items[items.length - 1];
+}
+
+beforeEach(() => {
+  resetUserPassword.mockClear();
+  deleteUser.mockClear();
+  updateEq.mockClear();
+  update.mockClear();
+});
 
 describe('redefinicao de senha pelo Admin', () => {
   it('oferece o botao de redefinir senha para cada usuario', async () => {
@@ -83,5 +104,102 @@ describe('redefinicao de senha pelo Admin', () => {
     await userEvent.click(botoes[0]);
     await userEvent.click(screen.getByRole('button', { name: /cancelar/i }));
     expect(resetUserPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe('protecoes contra autoexclusao e autoinativacao', () => {
+  it('nao oferece Inativar nem Excluir na propria linha do Admin logado', async () => {
+    render();
+    await screen.findAllByRole('button', { name: /redefinir senha/i });
+    const linhaAdmin = screen.getByText('Admin Um').closest('tr')!;
+    expect(within(linhaAdmin).queryByRole('button', { name: /inativar/i })).toBeNull();
+    expect(within(linhaAdmin).queryByRole('button', { name: /^excluir$/i })).toBeNull();
+  });
+
+  it('oferece Inativar e Excluir na linha de outro usuario', async () => {
+    render();
+    await screen.findAllByRole('button', { name: /redefinir senha/i });
+    const linhaColab = screen.getByText('Colaborador Dois').closest('tr')!;
+    expect(within(linhaColab).getByRole('button', { name: /inativar/i })).toBeInTheDocument();
+    expect(within(linhaColab).getByRole('button', { name: /^excluir$/i })).toBeInTheDocument();
+  });
+});
+
+describe('editar usuario', () => {
+  it('abre o formulario preenchido com os dados atuais', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^editar$/i });
+    await userEvent.click(botoes[1]);
+    expect(await screen.findByDisplayValue('Colaborador Dois')).toBeInTheDocument();
+  });
+
+  it('salva as alteracoes via update direto (RLS ja permite ao Admin)', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^editar$/i });
+    await userEvent.click(botoes[1]);
+    const nome = await screen.findByDisplayValue('Colaborador Dois');
+    await userEvent.clear(nome);
+    await userEvent.type(nome, 'Colaborador Renomeado');
+    await userEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
+
+    await waitFor(() => expect(updateEq).toHaveBeenCalledWith('id', 'user-2'));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ full_name: 'Colaborador Renomeado' }));
+  });
+
+  it('e-mail nao e editavel no formulario', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^editar$/i });
+    await userEvent.click(botoes[1]);
+    const email = await screen.findByDisplayValue('colab@empresa.com.br');
+    expect(email).toHaveAttribute('readonly');
+  });
+});
+
+describe('ativar / inativar usuario', () => {
+  it('pede confirmacao antes de inativar', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /inativar/i });
+    await userEvent.click(botoes[0]);
+    await waitFor(() => expect(screen.getByText(/Voce esta inativando/i)).toBeInTheDocument());
+    expect(updateEq).not.toHaveBeenCalled();
+  });
+
+  it('inativa ao confirmar', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /inativar/i });
+    await userEvent.click(botoes[0]);
+    // o rodape do modal e' o ultimo botao "Inativar" da tela - os da tabela
+    // continuam visiveis atras dele.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^inativar$/i }).length).toBeGreaterThan(1));
+    await userEvent.click(lastOf(screen.getAllByRole('button', { name: /^inativar$/i })));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ active: false }));
+  });
+});
+
+describe('excluir usuario', () => {
+  it('exige digitar o e-mail exato antes de habilitar a confirmacao', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^excluir$/i });
+    await userEvent.click(botoes[0]);
+
+    // Apos abrir, o botao de confirmacao no rodape do modal e' o ultimo
+    // "Excluir" da tela (os botoes de linha continuam visiveis atras dele) -
+    // e comeca desabilitado ate o e-mail ser digitado corretamente.
+    await waitFor(() => expect(screen.getByLabelText('Confirmacao')).toBeInTheDocument());
+    const botaoModal = lastOf(screen.getAllByRole('button', { name: /^excluir$/i }));
+    expect(botaoModal).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText('Confirmacao'), 'colab@empresa.com.br');
+    expect(botaoModal).toBeEnabled();
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('exclui apos confirmar com o e-mail correto', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^excluir$/i });
+    await userEvent.click(botoes[0]);
+    await userEvent.type(screen.getByLabelText('Confirmacao'), 'colab@empresa.com.br');
+    await userEvent.click(lastOf(screen.getAllByRole('button', { name: /^excluir$/i })));
+    await waitFor(() => expect(deleteUser).toHaveBeenCalledWith('user-2'));
   });
 });

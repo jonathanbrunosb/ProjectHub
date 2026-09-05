@@ -65,7 +65,7 @@ export function ConfirmDialog({
             <p className="mb-1.5 text-xs">
               Digite <span className="font-mono font-semibold text-fg">{confirmText}</span> para confirmar:
             </p>
-            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus aria-label="Confirmacao" />
           </div>
         )}
       </div>
