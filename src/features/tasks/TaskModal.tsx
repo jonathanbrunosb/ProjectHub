@@ -5,6 +5,7 @@ import { Drawer } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
@@ -259,6 +260,12 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
             </>
           )}
         </fieldset>
+
+        {task && (
+          <div className="mt-4 border-t border-border pt-4">
+            <AttachmentsPanel projectId={projectId} entity="task" entityId={task.id} canEdit={canEdit} compact />
+          </div>
+        )}
       </Drawer>
 
       <ConfirmDialog

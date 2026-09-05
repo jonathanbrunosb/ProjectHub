@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Drawer } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
+import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { listRisks, nextActionCode, upsertActionPlan, type ActionPlanWithContext } from '@/services/risks';
@@ -131,6 +132,12 @@ export function ActionPlanModal({
         <Field label="Evidencia (URL)"><Input type="url" value={form.evidence_url} onChange={(e) => set('evidence_url', e.target.value)} /></Field>
         <Field label="Comentario"><Textarea value={form.comment} onChange={(e) => set('comment', e.target.value)} /></Field>
       </fieldset>
+
+      {action && (
+        <div className="mt-4 border-t border-border pt-4">
+          <AttachmentsPanel projectId={projectId} entity="action_plan" entityId={action.id} canEdit={canEdit} compact />
+        </div>
+      )}
     </Drawer>
   );
 }

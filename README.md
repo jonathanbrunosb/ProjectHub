@@ -17,7 +17,7 @@ e leitura executiva em segundos.
 |---|---|
 | **Visão executiva** | Dashboard consolidado com KPIs de execução, financeiro e governança, todos com drill-down para os registros que os compõem. |
 | **Visão corporativa** | Portfólio em tabela, kanban, cards, Gantt e roadmap, com colunas personalizáveis e visualizações salvas. |
-| **Visão individual** | Página de projeto com 12 abas: visão geral, cronograma, tarefas, financeiro, recursos, riscos, ações, indicadores, decisões, campos personalizados, status reports e histórico. |
+| **Visão individual** | Página de projeto com 14 abas: visão geral, cronograma, tarefas, indicador de meta, financeiro, recursos, riscos, ações, indicadores, decisões, campos personalizados, anexos, status reports e histórico. |
 | **Gestão operacional** | Tarefas com peso, dependências, checklist, subtarefas, marcos e reprogramação com histórico. |
 | **Gestão financeira** | Orçamento com revisões versionadas, realizado, comprometido, forecast, saldo e variação, com curva mensal e roll-up de portfólio. |
 | **Gestão de riscos** | Riscos e issues em matriz 5×5, estratégia, plano de mitigação, risco residual e planos de ação corporativos. |
@@ -157,12 +157,12 @@ se configurado; senão a do `github.io`) em *Site URL* e *Redirect URLs*:
 
 ## Estado atual e próximos passos
 
-**Implementado e validado:** schema com 17 migrations versionadas, RLS em todas as
+**Implementado e validado:** schema com 18 migrations versionadas, RLS em todas as
 tabelas expostas (47 asserções de teste), regras de negócio no banco (38 asserções),
-segregação QA/PRD (14 asserções), 149 testes de frontend, build e deploy automatizados.
+segregação QA/PRD (14 asserções), 155 testes de frontend, build e deploy automatizados.
 
 **Pendências conhecidas** — ver [`docs/OPERACAO.md`](docs/OPERACAO.md):
-upload de anexos pela interface, Edge Functions de integração (Teams/e-mail/Power BI),
+Edge Functions de integração (Teams/e-mail/Power BI),
 agendamento do motor de alertas, dashboards montáveis pelo usuário, MFA e o
 provisionamento do projeto Supabase de Produção (código pronto; checklist em
 [`docs/AMBIENTES.md`](docs/AMBIENTES.md)).
