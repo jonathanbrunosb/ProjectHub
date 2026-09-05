@@ -2,12 +2,14 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { LineChart, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/app/AuthProvider';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Input';
 import { describeError } from '@/lib/supabase/client';
 
 export function LoginPage() {
   const { session, signIn, configured, loading } = useAuth();
+  const { environment } = useEnvironment();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -90,10 +92,15 @@ export function LoginPage() {
             <div className="mt-5 flex gap-2.5 rounded-lg border border-warn/30 bg-warn/10 p-3 text-xs text-warn">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <p className="font-medium">Ambiente nao configurado</p>
+                <p className="font-medium">Ambiente {environment} nao configurado</p>
                 <p className="mt-0.5 text-muted">
-                  Defina <code className="font-mono">VITE_SUPABASE_URL</code> e{' '}
-                  <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> antes do build.
+                  Defina <code className="font-mono">VITE_SUPABASE_{environment}_URL</code> e{' '}
+                  <code className="font-mono">VITE_SUPABASE_{environment}_ANON_KEY</code>{' '}
+                  {environment === 'QA' && (
+                    <>(ou <code className="font-mono">VITE_SUPABASE_URL</code> /{' '}
+                    <code className="font-mono">VITE_SUPABASE_ANON_KEY</code>) </>
+                  )}
+                  antes do build.
                 </p>
               </div>
             </div>
