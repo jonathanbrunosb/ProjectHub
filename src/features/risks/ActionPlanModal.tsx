@@ -6,7 +6,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { listRisks, nextActionCode, upsertActionPlan, type ActionPlanWithContext } from '@/services/risks';
-import { listProfiles } from '@/services/projects';
+import { listActiveProfiles } from '@/services/projects';
 import { actionStatusLabel, priorityLabel } from '@/utils/domain-labels';
 
 const blank = {
@@ -24,7 +24,7 @@ export function ActionPlanModal({
   const queryClient = useQueryClient();
   const [form, setForm] = useState(blank);
 
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: listProfiles, enabled: open });
+  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
   const risks = useQuery({ queryKey: ['risks', projectId], queryFn: () => listRisks(projectId), enabled: open });
 
   useEffect(() => {
