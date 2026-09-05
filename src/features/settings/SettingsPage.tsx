@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, ShieldCheck, KeyRound } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
@@ -20,7 +20,7 @@ import {
 } from '@/services/customFields';
 import { listCompanies, listProfiles, listTeams, listTemplates } from '@/services/projects';
 import { refreshAllHealth } from '@/services/governance';
-import { createUser, type CreateUserResult } from '@/services/adminUsers';
+import { createUser, resetUserPassword, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
 import { roleDescription, roleLabel } from '@/utils/domain-labels';
 import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, RoleKey } from '@/types/domain';
 
@@ -142,8 +142,10 @@ function UsersTab() {
   const { data = [], isLoading } = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState(blankNewUser);
-  // Credencial exibida uma unica vez apos o cadastro - nao fica armazenada.
+  // Credencial exibida uma unica vez (cadastro ou redefinicao) - nao fica armazenada.
   const [createdUser, setCreatedUser] = useState<CreateUserResult | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetResult, setResetResult] = useState<ResetPasswordResult | null>(null);
 
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen });
@@ -196,6 +198,15 @@ function UsersTab() {
     onError: (e) => toast.error('Nao foi possivel cadastrar o usuario', describeError(e)),
   });
 
+  const resetPassword = useMutation({
+    mutationFn: (userId: string) => resetUserPassword(userId),
+    onSuccess: (result) => {
+      setResetTarget(null);
+      setResetResult(result);
+    },
+    onError: (e) => toast.error('Nao foi possivel redefinir a senha', describeError(e)),
+  });
+
   if (isLoading) return <Spinner />;
 
   return (
@@ -222,7 +233,7 @@ function UsersTab() {
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {['Usuario', 'Cargo', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao'].map((h) => (
+              {['Usuario', 'Cargo', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
               ))}
             </tr>
@@ -267,6 +278,18 @@ function UsersTab() {
                 <td className="px-3 py-2.5 tabular-nums text-muted">{p.weekly_capacity_hours} h/sem</td>
                 <td className="px-3 py-2.5">
                   {p.active ? <Badge tone="ok">Ativo</Badge> : <Badge tone="neutral">Inativo</Badge>}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {can('users.manage') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<KeyRound className="h-3.5 w-3.5" />}
+                      onClick={() => setResetTarget({ id: p.id, name: p.full_name })}
+                    >
+                      Redefinir senha
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -348,6 +371,56 @@ function UsersTab() {
               Oriente a pessoa a trocar a senha no primeiro acesso. Enquanto nao houver vinculo a
               projetos, ela entra mas nao enxerga nenhum projeto - o vinculo e feito na aba
               <b> Recursos</b> de cada projeto.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(resetTarget)}
+        onClose={() => setResetTarget(null)}
+        onConfirm={() => resetTarget && resetPassword.mutate(resetTarget.id)}
+        loading={resetPassword.isPending}
+        title="Redefinir senha"
+        confirmLabel="Redefinir"
+        description={
+          <>
+            Uma nova senha temporaria sera gerada para <b>{resetTarget?.name}</b>, substituindo a
+            atual imediatamente. Repasse a credencial a pessoa por um canal seguro.
+          </>
+        }
+      />
+
+      <Modal
+        open={Boolean(resetResult)}
+        onClose={() => setResetResult(null)}
+        title="Senha redefinida"
+        description="Repasse a credencial abaixo. Ela nao fica armazenada e nao sera exibida novamente."
+        size="sm"
+        footer={<Button onClick={() => setResetResult(null)}>Concluir</Button>}
+      >
+        {resetResult && (
+          <div className="space-y-3">
+            <Field label="E-mail">
+              <Input readOnly value={resetResult.email} onFocus={(e) => e.target.select()} />
+            </Field>
+            <Field label="Senha temporaria">
+              <Input readOnly value={resetResult.temporary_password} className="font-mono" onFocus={(e) => e.target.select()} />
+            </Field>
+            <Button
+              variant="secondary"
+              className="w-full justify-center"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(`E-mail: ${resetResult.email}\nSenha temporaria: ${resetResult.temporary_password}`)
+                  .then(() => toast.success('Credencial copiada'))
+                  .catch(() => toast.error('Nao foi possivel copiar', 'Selecione e copie manualmente.'));
+              }}
+            >
+              Copiar e-mail e senha
+            </Button>
+            <p className="rounded-lg bg-surface-2 p-3 text-xs text-muted">
+              Oriente a pessoa a trocar a senha assim que entrar.
             </p>
           </div>
         )}

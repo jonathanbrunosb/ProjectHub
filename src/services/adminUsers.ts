@@ -18,25 +18,27 @@ export interface CreateUserResult {
   temporary_password: string;
 }
 
+export interface ResetPasswordResult {
+  email: string;
+  /** Senha temporaria gerada no servidor. Exibida uma unica vez ao Admin. */
+  temporary_password: string;
+}
+
 /**
- * Cadastra um usuario via Edge Function (admin-create-user). Nunca usa
- * service_role no navegador: a funcao valida que quem chama e' Admin e faz a
- * operacao privilegiada no servidor.
+ * FunctionsHttpError carrega a resposta JSON da propria funcao no `context`.
+ * A extracao precisa acontecer fora do try/catch de quem chama, senao o throw
+ * e' engolido pelo catch - por isso vira um helper e nao fica duplicada.
  */
-export async function createUser(input: CreateUserInput): Promise<CreateUserResult> {
-  const { data, error } = await supabase.functions.invoke('admin-create-user', {
-    body: input,
-  });
+async function invokeAdminFunction<T>(name: string, body: object): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
 
   if (error) {
-    // FunctionsHttpError carrega a resposta JSON da propria funcao no `context`.
-    // A extracao precisa acontecer fora do try, senao o throw e' engolido pelo catch.
     let detail: string | null = null;
     const context = (error as { context?: Response }).context;
     if (context) {
       try {
-        const body = await context.clone().json();
-        if (typeof body?.error === 'string') detail = body.error;
+        const responseBody = await context.clone().json();
+        if (typeof responseBody?.error === 'string') detail = responseBody.error;
       } catch {
         // corpo nao era JSON - mantem a mensagem original
       }
@@ -44,5 +46,25 @@ export async function createUser(input: CreateUserInput): Promise<CreateUserResu
     throw new Error(detail ?? (error as Error).message);
   }
 
-  return data as CreateUserResult;
+  return data as T;
+}
+
+/**
+ * Cadastra um usuario via Edge Function (admin-create-user). Nunca usa
+ * service_role no navegador: a funcao valida que quem chama e' Admin e faz a
+ * operacao privilegiada no servidor.
+ */
+export async function createUser(input: CreateUserInput): Promise<CreateUserResult> {
+  return invokeAdminFunction<CreateUserResult>('admin-create-user', input);
+}
+
+/**
+ * Gera uma nova senha temporaria para um usuario existente (admin-reset-password).
+ * Caminho interino enquanto o SMTP proprio nao esta configurado: a recuperacao
+ * por e-mail (resetPasswordForEmail) depende do mailer nativo do Supabase, que
+ * e' limitado e nao-deterministico - o mesmo motivo que levou o cadastro a usar
+ * senha temporaria em vez de convite por e-mail.
+ */
+export async function resetUserPassword(userId: string): Promise<ResetPasswordResult> {
+  return invokeAdminFunction<ResetPasswordResult>('admin-reset-password', { user_id: userId });
 }
