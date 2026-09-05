@@ -110,10 +110,11 @@ em operação rotineira: aviso em tudo vira ruído e o usuário passa a clicar s
 
 Toda exportação carimba o ambiente em três lugares:
 
-- **Nome do arquivo:** `portfolio_de_projetos_PRD_2026-09-05.xlsx` / `..._QA_...`
-- **Dentro da planilha:** a aba `Informacoes` traz ambiente, data de geração, usuário,
-  filtros aplicados e contagem de registros. Em QA, um aviso em destaque: *"dados de QA
-  (ambiente de testes). Não utilizar como informação oficial."*
+- **Nome do arquivo:** `portfolio_de_projetos_PRD_2026-09-05.xlsx` (ou `.pdf`) / `..._QA_...`
+- **Dentro do arquivo:** no Excel, a aba `Informacoes` traz ambiente, data de geração,
+  usuário, filtros e contagem; no PDF, essas informações ficam no cabeçalho de abertura.
+  Em QA, os dois trazem aviso em destaque: *"dados de QA (ambiente de testes). Não
+  utilizar como informação oficial."*
 - **Auditoria:** o evento `export` grava ambiente, formato e volume no payload.
 
 Assim uma planilha que circula por e-mail não pode ser confundida com dado oficial — e

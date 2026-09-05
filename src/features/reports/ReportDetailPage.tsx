@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, FileText } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -28,7 +28,7 @@ export function ReportDetailPage() {
     { label: 'Relatorios', to: '/relatorios' },
     { label: definition?.title ?? 'Relatorio' },
   ]);
-  const { exportReport, isExporting, canExport } = useReportExport();
+  const { exportReport, isExporting, isBusy, canExport } = useReportExport();
 
   const projects = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
   const risks = useQuery({
@@ -71,15 +71,26 @@ export function ReportDetailPage() {
       title={definition.title}
       description={definition.description}
       actions={canExport && (
-        <Button
-          variant="secondary"
-          onClick={() => void exportReport(reportKey)}
-          loading={isExporting(reportKey)}
-          disabled={isExporting(reportKey)}
-          icon={<FileSpreadsheet className="h-4 w-4" />}
-        >
-          {isExporting(reportKey) ? 'Gerando Excel...' : 'Exportar Excel'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => void exportReport(reportKey, 'pdf')}
+            loading={isExporting(reportKey, 'pdf')}
+            disabled={isBusy(reportKey)}
+            icon={<FileText className="h-4 w-4" />}
+          >
+            {isExporting(reportKey, 'pdf') ? 'Gerando PDF...' : 'Exportar PDF'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void exportReport(reportKey, 'xlsx')}
+            loading={isExporting(reportKey, 'xlsx')}
+            disabled={isBusy(reportKey)}
+            icon={<FileSpreadsheet className="h-4 w-4" />}
+          >
+            {isExporting(reportKey, 'xlsx') ? 'Gerando Excel...' : 'Exportar Excel'}
+          </Button>
+        </div>
       )}
     />
   );

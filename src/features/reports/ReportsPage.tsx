@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Eye, FileSpreadsheet } from 'lucide-react';
+import { Eye, FileSpreadsheet, FileText } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
@@ -10,7 +10,7 @@ import { useReportExport } from './useReportExport';
 
 export function ReportsPage() {
   useBreadcrumbs([{ label: 'Governanca' }, { label: 'Relatorios' }]);
-  const { exportReport, isExporting, canExport } = useReportExport();
+  const { exportReport, isExporting, isBusy, canExport } = useReportExport();
 
   return (
     <>
@@ -43,16 +43,28 @@ export function ReportsPage() {
                 Visualizar
               </Link>
               {canExport && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void exportReport(r.key)}
-                  loading={isExporting(r.key)}
-                  disabled={isExporting(r.key)}
-                  icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
-                >
-                  {isExporting(r.key) ? 'Gerando...' : 'Excel'}
-                </Button>
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void exportReport(r.key, 'pdf')}
+                    loading={isExporting(r.key, 'pdf')}
+                    disabled={isBusy(r.key)}
+                    icon={<FileText className="h-3.5 w-3.5" />}
+                  >
+                    {isExporting(r.key, 'pdf') ? 'Gerando...' : 'PDF'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void exportReport(r.key, 'xlsx')}
+                    loading={isExporting(r.key, 'xlsx')}
+                    disabled={isBusy(r.key)}
+                    icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+                  >
+                    {isExporting(r.key, 'xlsx') ? 'Gerando...' : 'Excel'}
+                  </Button>
+                </>
               )}
             </div>
           </article>

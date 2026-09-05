@@ -57,7 +57,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 73 testes de frontend (Vitest + Testing Library)
+npm run test                # 95 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
@@ -132,17 +132,22 @@ não basta salvar no GitHub.
 
 ## Exportação de dados
 
-Toda exportação tabular gera **Excel (.xlsx)**. O CSV foi removido: para análise
-contábil o arquivo precisa chegar com moeda somável, percentual calculável e data
-reconhecida como data — em CSV tudo isso vira texto e o analista refaz o trabalho na mão.
+Dois formatos, propósitos diferentes: **Excel (.xlsx) para análise** e **PDF para
+apresentação**. O CSV foi removido — para análise contábil o arquivo precisa chegar com
+moeda somável, percentual calculável e data reconhecida como data, e em CSV tudo isso
+vira texto.
 
 **Onde exportar:**
 
 | Origem | O que sai |
 |---|---|
-| Qualquer tabela (`DataTable`) | Uma aba com as **colunas visíveis, na ordem da tela**, e apenas as **linhas filtradas** |
-| Janela Relatórios (9 relatórios) | Workbook com uma aba por seção — botão `Excel` no card e na página do relatório |
-| Trilha de auditoria | Uma aba, respeitando os filtros de usuário, projeto, entidade, ação e período |
+| Qualquer tabela (`DataTable`) | Excel com as **colunas visíveis, na ordem da tela**, e apenas as **linhas filtradas** |
+| Janela Relatórios (9 relatórios) | `PDF` e `Excel` no card e na página do relatório |
+| Trilha de auditoria | Excel, respeitando os filtros de usuário, projeto, entidade, ação e período |
+
+**Os dois formatos partem das mesmas seções** (`buildReportSheets`), então PDF e Excel
+nunca divergem de conteúdo. O que muda é o tratamento do valor: no Excel a célula guarda
+o número nativo para o analista calcular; no PDF vira texto já formatado em pt-BR.
 
 **Formatação aplicada** (`src/lib/export/xlsx.ts`): cabeçalho em negrito sobre fundo
 corporativo, primeira linha congelada, filtro automático, largura de coluna calculada
@@ -151,6 +156,25 @@ pelo conteúdo (entre 10 e 46), e formato por tipo — `R$ #,##0.00`, `0.0%`, `d
 
 **Percentual é gravado como fração** (78,4% → `0,784` com formato `0.0%`): é a
 representação nativa do Excel, a única em que média e soma percentual saem corretas.
+
+### PDF (`src/lib/export/pdf.ts`)
+
+Documento A4 com logo do Grupo Equatorial, identidade ProjectHub, título, ambiente, data,
+usuário e filtros aplicados; tabelas com cabeçalho repetido a cada página, colunas
+numéricas alinhadas à direita, e rodapé com paginação. Orientação escolhida
+automaticamente: paisagem acima de 6 colunas. Em QA, uma faixa de aviso identifica o
+documento como dado de teste.
+
+Usa **jsPDF + autotable**, não `window.print()`: o diálogo do navegador acrescenta
+cabeçalho e rodapé próprios, varia entre navegadores e não permite paginação nem marca
+corporativa — inadequado para documento que vai a comitê.
+
+> **A compressão do logo é obrigatória.** O jsPDF embute PNG como bitmap cru por padrão:
+> o mesmo relatório sai com **2,1 MB sem compressão e 69 KB com `'MEDIUM'`**. Existe teste
+> travando esse parâmetro — sem ele a regressão passa despercebida até alguém tentar
+> enviar o arquivo por e-mail.
+
+### Excel
 
 **Biblioteca: ExcelJS, não SheetJS.** A versão community do `xlsx` não aplica estilos —
 negrito, largura e formato de número são recursos da versão paga. Com ela o arquivo seria

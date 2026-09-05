@@ -21,7 +21,7 @@ src/
   features/       Um diretório por domínio (dashboard, portfolio, projects, tasks,
                   risks, financial, resources, calendar, reports, audit, settings)
   hooks/          Hooks transversais (ex.: useTableState)
-  lib/export/     Geração de planilhas Excel (.xlsx) carregada sob demanda
+  lib/export/     Geração de Excel (.xlsx) e PDF, carregadas sob demanda
   lib/supabase/   Clientes QA/PRD e utilitários de auditoria
   services/       Acesso a dados — única camada que fala com o Supabase
   types/          Tipos de domínio espelhando os enums do PostgreSQL

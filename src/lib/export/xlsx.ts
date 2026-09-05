@@ -1,5 +1,18 @@
-import type { Environment } from '@/lib/supabase/client';
 import { parseDateOnly } from '@/utils/format';
+import type { Environment } from '@/lib/supabase/client';
+import { environmentFullLabel, type CellType, type ExportDocument, type SheetColumn } from './types';
+import { buildExportFileName } from './fileName';
+
+export { sanitizeFileName } from './fileName';
+
+/** Compatibilidade: os chamadores existentes pedem sempre .xlsx aqui. */
+export function buildFileName(base: string, environment: Environment, date = new Date()): string {
+  return buildExportFileName(base, environment, 'xlsx', date);
+}
+
+export type { CellType, SheetColumn, SheetSpec, ExportDocument } from './types';
+/** Mantido pelo nome antigo para nao quebrar quem ja consumia a API. */
+export type WorkbookSpec = ExportDocument;
 
 /**
  * Geracao de planilhas Excel (.xlsx) no browser.
@@ -13,38 +26,6 @@ import { parseDateOnly } from '@/utils/format';
  * versao paga). Sem isso o arquivo seria um CSV com outra extensao, que e'
  * exatamente o que esta melhoria queria eliminar.
  */
-
-export type CellType =
-  | 'text' | 'integer' | 'number' | 'currency' | 'percent' | 'date' | 'datetime' | 'boolean';
-
-export interface SheetColumn {
-  key: string;
-  header: string;
-  type?: CellType;
-  width?: number;
-}
-
-export interface SheetSpec {
-  name: string;
-  columns?: SheetColumn[];
-  rows: Record<string, unknown>[];
-  /** Texto opcional acima da tabela (ex.: filtros aplicados). */
-  note?: string;
-}
-
-export interface WorkbookMeta {
-  environment: Environment;
-  title: string;
-  userEmail?: string | null;
-  /** Filtros ativos na tela, refletidos na aba de informacoes. */
-  filters?: Record<string, unknown>;
-}
-
-export interface WorkbookSpec {
-  fileName: string;
-  sheets: SheetSpec[];
-  meta: WorkbookMeta;
-}
 
 const numberFormats: Record<CellType, string | undefined> = {
   text: undefined,
@@ -91,24 +72,6 @@ export function columnsFromRows(rows: Record<string, unknown>[]): SheetColumn[] 
 export function sanitizeSheetName(name: string, fallback = 'Dados'): string {
   const clean = name.replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim();
   return (clean || fallback).slice(0, 31);
-}
-
-/** Remove acentos e caracteres que sistemas de arquivos rejeitam. */
-export function sanitizeFileName(name: string): string {
-  return name
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .toLowerCase();
-}
-
-/**
- * `[nome_relatorio]_[ambiente]_[data].xlsx` - o ambiente no nome impede que
- * uma planilha de QA circule como se fosse numero oficial de Producao.
- */
-export function buildFileName(base: string, environment: Environment, date = new Date()): string {
-  return `${sanitizeFileName(base)}_${environment}_${date.toISOString().slice(0, 10)}.xlsx`;
 }
 
 function columnWidth(column: SheetColumn, rows: Record<string, unknown>[]): number {
@@ -159,16 +122,11 @@ function toCellValue(raw: unknown, type: CellType): string | number | boolean | 
   }
 }
 
-const environmentLabel: Record<Environment, string> = {
-  QA: 'QA - Ambiente de Testes',
-  PRD: 'PRD - Producao',
-};
-
 /**
  * Monta o workbook em memoria. Separado do download para poder ser verificado
  * em teste (linhas, tipos, formatos) sem depender de DOM.
  */
-export async function buildWorkbook(spec: WorkbookSpec): Promise<import('exceljs').Workbook> {
+export async function buildWorkbook(spec: ExportDocument): Promise<import('exceljs').Workbook> {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ProjectHub';
@@ -230,7 +188,7 @@ export async function buildWorkbook(spec: WorkbookSpec): Promise<import('exceljs
  * Monta e dispara o download. Lanca em caso de falha para que a tela possa
  * exibir a mensagem de erro e sair do estado de carregamento.
  */
-export async function downloadWorkbook(spec: WorkbookSpec): Promise<void> {
+export async function downloadWorkbook(spec: ExportDocument): Promise<void> {
   const workbook = await buildWorkbook(spec);
   const buffer = await workbook.xlsx.writeBuffer();
   triggerDownload(new Blob([buffer], {
@@ -238,13 +196,13 @@ export async function downloadWorkbook(spec: WorkbookSpec): Promise<void> {
   }), spec.fileName);
 }
 
-function addInfoSheet(workbook: import('exceljs').Workbook, spec: WorkbookSpec) {
+function addInfoSheet(workbook: import('exceljs').Workbook, spec: ExportDocument) {
   const ws = workbook.addWorksheet('Informacoes');
   ws.columns = [{ key: 'campo', width: 24 }, { key: 'valor', width: 62 }];
 
   const lines: [string, string][] = [
     ['Relatorio', spec.meta.title],
-    ['Ambiente', environmentLabel[spec.meta.environment]],
+    ['Ambiente', environmentFullLabel[spec.meta.environment]],
     ['Data de geracao', new Date().toLocaleString('pt-BR')],
   ];
   if (spec.meta.userEmail) lines.push(['Usuario', spec.meta.userEmail]);
