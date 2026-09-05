@@ -29,7 +29,9 @@ export const supabase: SupabaseClient = isSupabaseConfigured
         detectSessionInUrl: true,
         storageKey: 'pmo.auth',
       },
-      global: { headers: { 'x-application-name': 'pmo-contabil' } },
+      // Sem headers customizados de proposito: qualquer header fora do padrao
+      // obriga o preflight CORS a lista-lo explicitamente do outro lado, o que
+      // quebrava a chamada as Edge Functions sem ganho nenhum em troca.
     })
   : createStub();
 
