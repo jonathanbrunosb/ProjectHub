@@ -1,13 +1,15 @@
-// Edge Function: admin-invite-user
+// Edge Function: admin-create-user
 //
-// Cadastra um usuario e envia convite por e-mail (fluxo administrativo).
+// Cadastra um usuario com senha temporaria (fluxo administrativo).
 // Executa fora do navegador: e' o UNICO lugar da plataforma que usa a
 // service_role, e ela nunca sai daqui - fica isolada nas variaveis de
 // ambiente da propria funcao no Supabase.
 //
-// Validacao de quem pode chamar: le o JWT de quem fez a requisicao,
-// confirma o papel na tabela profiles (via RLS normal, sem privilegio),
-// e so prossegue com a service_role se for 'admin'.
+// Por que senha temporaria em vez de convite por e-mail: o servico de
+// e-mail nativo do Supabase tem limite severo de envio e restricao de
+// destinatario, o que torna o cadastro nao-deterministico. Criar a conta
+// ja confirmada e entregar a credencial ao Admin remove essa dependencia.
+// Com SMTP proprio configurado, da' para voltar ao inviteUserByEmail.
 //
 // Import por URL (esm.sh) em vez de "npm:": o especificador npm depende da
 // versao do Edge Runtime e, quando nao resolve, a funcao quebra na carga.
@@ -38,6 +40,19 @@ function json(req: Request, body: unknown, status: number): Response {
 const allowedRoles = new Set([
   'admin', 'pmo', 'sponsor', 'project_owner', 'collaborator', 'viewer', 'auditor',
 ]);
+
+// Alfabeto sem caracteres ambiguos (0/O, 1/l/I) - a senha sera digitada por gente.
+function generateTemporaryPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const symbols = '!@#$%&*';
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  const extra = new Uint8Array(2);
+  crypto.getRandomValues(extra);
+  return `${out}${symbols[extra[0] % symbols.length]}${extra[1] % 10}`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
@@ -97,31 +112,36 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const siteUrl = Deno.env.get('SITE_URL') ?? 'https://projecthub.contabilidade-eqtl.com/';
-    const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: fullName },
-      redirectTo: siteUrl,
+    const temporaryPassword = generateTemporaryPassword();
+
+    // email_confirm: true -> a pessoa entra direto com a senha temporaria,
+    // sem depender de nenhum e-mail ser entregue.
+    const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+      email,
+      password: temporaryPassword,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
     });
 
-    if (inviteError) {
-      const lowered = inviteError.message.toLowerCase();
+    if (createError) {
+      const lowered = createError.message.toLowerCase();
       const isDuplicate = lowered.includes('already been registered')
         || lowered.includes('already registered')
         || lowered.includes('already exists');
       return json(
         req,
-        { error: isDuplicate ? 'Ja existe uma conta com esse e-mail.' : `Falha ao enviar o convite: ${inviteError.message}` },
+        { error: isDuplicate ? 'Ja existe uma conta com esse e-mail.' : `Falha ao criar o usuario: ${createError.message}` },
         isDuplicate ? 409 : 400,
       );
     }
 
-    const newUserId = invited?.user?.id;
+    const newUserId = created?.user?.id;
     if (!newUserId) {
-      return json(req, { error: 'Convite enviado, mas o Supabase nao retornou o usuario criado.' }, 500);
+      return json(req, { error: 'Usuario criado, mas o Supabase nao retornou o identificador.' }, 500);
     }
 
     // O gatilho on_auth_user_created ja criou o profile com papel 'viewer'.
-    // Ajusta para o papel e vinculo definidos pelo Admin no convite.
+    // Ajusta para o papel e vinculo definidos pelo Admin no cadastro.
     const { error: updateError } = await adminClient
       .from('profiles')
       .update({
@@ -136,12 +156,12 @@ Deno.serve(async (req) => {
     if (updateError) {
       return json(
         req,
-        { error: `Convite enviado, mas houve falha ao definir o perfil: ${updateError.message}` },
+        { error: `Usuario criado, mas houve falha ao definir o perfil: ${updateError.message}` },
         500,
       );
     }
 
-    return json(req, { id: newUserId }, 200);
+    return json(req, { id: newUserId, email, temporary_password: temporaryPassword }, 200);
   } catch (e) {
     return json(req, { error: e instanceof Error ? e.message : 'Erro interno na funcao.' }, 500);
   }
