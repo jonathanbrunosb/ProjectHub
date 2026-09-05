@@ -16,6 +16,7 @@ function project(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     progress_planned: 50, progress_actual: 50, progress_deviation: 0, days_overdue: 0,
     budget: 100_000, actual: 40_000, committed: 10_000, forecast: 100_000, remaining: 50_000,
     forecast_variance: 0, forecast_variance_pct: 0,
+    financial_module_mode: 'inherit', financial_effective_enabled: true,
     critical_risks: 0, open_risks: 0, overdue_tasks: 0, open_tasks: 0, overdue_actions: 0,
     pending_decisions: 0, next_milestone_name: null, next_milestone_date: null,
     last_update_at: '2026-06-01T10:00:00Z', archived_at: null,
@@ -75,6 +76,18 @@ describe('portfolioKpis', () => {
     expect(kpis.avgProgress).toBe(0);
     expect(kpis.lastUpdateAt).toBeNull();
   });
+
+  it('exclui projetos com o modulo financeiro desativado das somas financeiras', () => {
+    const kpis = portfolioKpis([
+      project({ budget: 100_000, actual: 40_000, forecast: 100_000, financial_effective_enabled: true }),
+      project({ budget: 999_999, actual: 999_999, forecast: 999_999, financial_effective_enabled: false }),
+    ]);
+    expect(kpis.budget).toBe(100_000);
+    expect(kpis.actual).toBe(40_000);
+    expect(kpis.forecast).toBe(100_000);
+    // total/active continuam contando todo mundo - so o financeiro e' filtrado.
+    expect(kpis.total).toBe(2);
+  });
 });
 
 describe('healthDistribution e groupCount', () => {
@@ -130,6 +143,17 @@ describe('consolidateCurve', () => {
     ]);
     expect(curve.map((c) => c.month)).toEqual(['2026-01-01', '2026-02-01']);
     expect(curve[1]).toEqual({ month: '2026-02-01', planned: 300, actual: 230, committed: 10, forecast: 300 });
+  });
+
+  it('exclui pontos de projetos fora do conjunto de ids habilitados', () => {
+    const curve = consolidateCurve(
+      [
+        { project_id: '1', reference_month: '2026-02-01', planned: 100, actual: 80, committed: 0, forecast: 90 },
+        { project_id: '2', reference_month: '2026-02-01', planned: 200, actual: 150, committed: 10, forecast: 210 },
+      ],
+      new Set(['1']),
+    );
+    expect(curve).toEqual([{ month: '2026-02-01', planned: 100, actual: 80, committed: 0, forecast: 90 }]);
   });
 });
 

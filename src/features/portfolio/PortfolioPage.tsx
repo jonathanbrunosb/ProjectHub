@@ -16,7 +16,7 @@ import { useEnvironment } from '@/app/EnvironmentProvider';
 import { useTableState } from '@/hooks/useTableState';
 import { listProjectOverview } from '@/services/projects';
 import { listCalendarEvents } from '@/services/governance';
-import { portfolioColumns, portfolioDefaultHidden } from './columns';
+import { financialColumnKeys, portfolioColumns, portfolioDefaultHidden } from './columns';
 import { PortfolioCards, PortfolioKanban } from './PortfolioViews';
 import { NewProjectModal } from '@/features/projects/NewProjectModal';
 import type { ProjectOverview } from '@/types/domain';
@@ -62,6 +62,17 @@ export function PortfolioPage() {
   const categories = useMemo(
     () => [...new Set(data.map((p) => p.category))].sort(),
     [data],
+  );
+
+  // Sem nenhum projeto usando gestao financeira no escopo carregado, as colunas
+  // financeiras (incl. o status "Financeiro") apenas poluiriam a leitura - a
+  // pessoa que precisar delas ainda pode ligar o modulo em algum projeto.
+  const anyFinancial = useMemo(() => data.some((p) => p.financial_effective_enabled), [data]);
+  const columns = useMemo(
+    () => (anyFinancial ? portfolioColumns : portfolioColumns.filter(
+      (c) => !financialColumnKeys.includes(String((c as { accessorKey?: string }).accessorKey)),
+    )),
+    [anyFinancial],
   );
 
   const projects = useMemo(() => {
@@ -177,7 +188,7 @@ export function PortfolioPage() {
       ) : mode === 'tabela' ? (
         <DataTable<ProjectOverview>
           data={projects}
-          columns={portfolioColumns}
+          columns={columns}
           state={table.state}
           onStateChange={table.onStateChange}
           onRowClick={(row) => navigate(`/projetos/${row.id}`)}

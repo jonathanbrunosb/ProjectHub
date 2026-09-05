@@ -35,7 +35,8 @@ export type Capability =
   | 'customfields.manage'
   | 'calendar.manage'
   | 'decision.decide'
-  | 'reports.export';
+  | 'reports.export'
+  | 'financial_module.manage';
 
 const matrix: Record<Capability, RoleKey[]> = {
   'portfolio.manage': ['admin', 'pmo'],
@@ -49,6 +50,9 @@ const matrix: Record<Capability, RoleKey[]> = {
   'calendar.manage': ['admin', 'pmo'],
   'decision.decide': ['admin', 'pmo', 'sponsor'],
   'reports.export': ['admin', 'pmo', 'auditor', 'sponsor', 'project_owner'],
+  // RoleKey nao tem um valor "gerencia" dedicado - Sponsor e' o papel de
+  // diretoria/gerencia executiva neste app (mesmo grupo de decision.decide).
+  'financial_module.manage': ['admin', 'pmo', 'sponsor'],
 };
 
 const AuthContext = createContext<AuthApi | null>(null);

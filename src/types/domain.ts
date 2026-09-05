@@ -42,6 +42,7 @@ export type CalendarWindowKind =
   | 'fechamento_mensal' | 'fechamento_trimestral' | 'itr' | 'dfp' | 'ecd' | 'ecf'
   | 'entrega_regulatoria' | 'inventario' | 'auditoria' | 'freeze' | 'outro';
 export type RiskCriticality = 'critico' | 'alto' | 'moderado' | 'baixo';
+export type FinancialModuleMode = 'inherit' | 'enabled' | 'disabled';
 
 export interface Profile {
   id: string;
@@ -69,6 +70,7 @@ export interface Team {
 export interface ProjectTemplate {
   id: string; code: string; name: string; category: string; description: string | null;
   default_progress_method: ProgressMethod; evm_enabled: boolean; active: boolean;
+  financial_module_default: FinancialModuleMode;
 }
 
 export interface Project {
@@ -103,6 +105,7 @@ export interface Project {
   baseline_target_date: string | null;
   actual_end_date: string | null;
   evm_enabled: boolean;
+  financial_module_mode: FinancialModuleMode;
   archived_at: string | null;
   updated_at: string;
 }
@@ -142,6 +145,9 @@ export interface ProjectOverview {
   remaining: number;
   forecast_variance: number;
   forecast_variance_pct: number;
+  financial_module_mode: FinancialModuleMode;
+  /** Ja calculado no banco: 'enabled'/'disabled' forcam; 'inherit' consulta o global. */
+  financial_effective_enabled: boolean;
   critical_risks: number;
   open_risks: number;
   overdue_tasks: number;
@@ -328,4 +334,9 @@ export interface Notification {
   id: string; profile_id: string; project_id: string | null; rule_key: string | null;
   severity: Priority; title: string; body: string | null; link: string | null;
   read_at: string | null; created_at: string;
+}
+
+/** Configuracao global da plataforma (linha unica). */
+export interface SystemSettings {
+  financial_module_enabled: boolean;
 }

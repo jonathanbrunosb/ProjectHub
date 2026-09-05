@@ -36,10 +36,15 @@ export function portfolioKpis(projects: ProjectOverview[]): PortfolioKpis {
   const active = projects.filter((p) => p.status === 'em_andamento' || p.status === 'planejamento');
   const base = active.length ? active : [];
 
+  // Projetos com o modulo financeiro desligado nao entram nas consolidacoes -
+  // somar budget=0/forecast=0 deles distorceria a leitura como se fossem
+  // projetos sem orcamento, quando na verdade o financeiro nem se aplica.
+  const financial = projects.filter((p) => p.financial_effective_enabled);
+
   const avgProgress = base.length ? sum(base, (p) => p.progress_actual) / base.length : 0;
   const avgPlanned = base.length ? sum(base, (p) => p.progress_planned) / base.length : 0;
-  const budget = sum(projects, (p) => p.budget);
-  const forecast = sum(projects, (p) => p.forecast);
+  const budget = sum(financial, (p) => p.budget);
+  const forecast = sum(financial, (p) => p.forecast);
 
   const lastUpdates = projects
     .map((p) => p.last_update_at)
@@ -59,10 +64,10 @@ export function portfolioKpis(projects: ProjectOverview[]): PortfolioKpis {
     avgPlanned: round(avgPlanned),
     progressDeviation: round(avgProgress - avgPlanned),
     budget,
-    actual: sum(projects, (p) => p.actual),
-    committed: sum(projects, (p) => p.committed),
+    actual: sum(financial, (p) => p.actual),
+    committed: sum(financial, (p) => p.committed),
     forecast,
-    remaining: sum(projects, (p) => p.remaining),
+    remaining: sum(financial, (p) => p.remaining),
     forecastVariance: forecast - budget,
     forecastVariancePct: budget === 0 ? 0 : round(((forecast - budget) / budget) * 100),
     criticalRisks: sum(projects, (p) => p.critical_risks),
@@ -129,7 +134,8 @@ export interface FinancialByProject {
 }
 
 export function financialByProject(projects: ProjectOverview[], limit = 8): FinancialByProject[] {
-  return [...projects]
+  return projects
+    .filter((p) => p.financial_effective_enabled)
     .sort((a, b) => Number(b.budget) - Number(a.budget))
     .slice(0, limit)
     .map((p) => ({
@@ -139,12 +145,20 @@ export function financialByProject(projects: ProjectOverview[], limit = 8): Fina
     }));
 }
 
-/** Consolida a curva financeira de varios projetos por mes de competencia. */
-export function consolidateCurve(points: FinancialCurvePoint[]): {
+/**
+ * Consolida a curva financeira de varios projetos por mes de competencia.
+ * `enabledProjectIds`, quando informado, exclui pontos de projetos com o
+ * modulo financeiro desligado - sem isso a curva do portfolio incluiria
+ * lancamentos de projetos que a governanca decidiu deixar de fora.
+ */
+export function consolidateCurve(
+  points: FinancialCurvePoint[], enabledProjectIds?: Set<string>,
+): {
   month: string; planned: number; actual: number; committed: number; forecast: number;
 }[] {
   const map = new Map<string, { planned: number; actual: number; committed: number; forecast: number }>();
   for (const p of points) {
+    if (enabledProjectIds && !enabledProjectIds.has(p.project_id)) continue;
     const key = p.reference_month;
     const acc = map.get(key) ?? { planned: 0, actual: 0, committed: 0, forecast: 0 };
     acc.planned += Number(p.planned ?? 0);

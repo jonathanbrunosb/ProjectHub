@@ -1,16 +1,28 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Eye, FileSpreadsheet, FileText } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { buttonClasses } from '@/components/ui/buttonStyles';
+import { listProjectOverview } from '@/services/projects';
 import { reports } from './reportDefinitions';
 import { useReportExport } from './useReportExport';
 
 export function ReportsPage() {
   useBreadcrumbs([{ label: 'Governanca' }, { label: 'Relatorios' }]);
   const { exportReport, isExporting, isBusy, canExport } = useReportExport();
+  const projects = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
+
+  // O relatorio financeiro dedicado so' faz sentido quando existe pelo menos
+  // um projeto usando o modulo - caso contrario seria uma tela vazia.
+  const anyFinancial = projects.data?.some((p) => p.financial_effective_enabled) ?? true;
+  const visibleReports = useMemo(
+    () => reports.filter((r) => r.key !== 'financeiro' || anyFinancial),
+    [anyFinancial],
+  );
 
   return (
     <>
@@ -19,7 +31,7 @@ export function ReportsPage() {
         description="Relatorios prontos para reuniao. Os dados respeitam o seu escopo de acesso; a exportacao fica registrada na trilha de auditoria."
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {reports.map((r) => (
+        {visibleReports.map((r) => (
           <article key={r.key} className="card flex flex-col p-4">
             <div className="flex items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">

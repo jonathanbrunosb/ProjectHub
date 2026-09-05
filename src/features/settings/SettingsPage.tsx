@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck } from 'lucide-react';
+import {
+  Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet,
+} from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
@@ -14,15 +16,21 @@ import { EmptyState, Spinner } from '@/components/ui/Feedback';
 import { AvatarWithName } from '@/components/ui/Avatar';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
+import { useFinancialModule } from '@/hooks/useFinancialModule';
 import { supabase, describeError } from '@/lib/supabase/client';
 import {
   deleteDefinition, listAllDefinitions, replaceOptions, upsertDefinition,
 } from '@/services/customFields';
-import { listCompanies, listProfiles, listTeams, listTemplates } from '@/services/projects';
+import {
+  listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
+} from '@/services/projects';
+import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
-import { roleDescription, roleLabel } from '@/utils/domain-labels';
-import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, Profile, RoleKey } from '@/types/domain';
+import { financialModeLabel, roleDescription, roleLabel } from '@/utils/domain-labels';
+import type {
+  CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
+} from '@/types/domain';
 
 const TABS = [
   { key: 'perfil', label: 'Meu perfil' },
@@ -30,6 +38,7 @@ const TABS = [
   { key: 'campos', label: 'Campos personalizados' },
   { key: 'templates', label: 'Templates' },
   { key: 'equipes', label: 'Equipes' },
+  { key: 'modulos', label: 'Modulos' },
   { key: 'sistema', label: 'Sistema' },
 ];
 
@@ -49,6 +58,7 @@ export function SettingsPage() {
   const visible = TABS.filter((t) => {
     if (t.key === 'usuarios' || t.key === 'sistema') return can('users.manage') || can('settings.manage');
     if (t.key === 'campos' || t.key === 'templates' || t.key === 'equipes') return can('portfolio.manage');
+    if (t.key === 'modulos') return can('financial_module.manage');
     return true;
   });
 
@@ -65,6 +75,7 @@ export function SettingsPage() {
       {tab === 'campos' && <CustomFieldsTab />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'equipes' && <TeamsTab />}
+      {tab === 'modulos' && <ModulosTab />}
       {tab === 'sistema' && <SystemTab />}
     </>
   );
@@ -822,7 +833,22 @@ function CustomFieldsTab() {
 
 // ---------------------------------------------------------------------------
 function TemplatesTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({ queryKey: ['templates'], queryFn: listTemplates });
+  const canManageFinancial = can('financial_module.manage');
+
+  const setDefault = useMutation({
+    mutationFn: ({ id, mode }: { id: string; mode: FinancialModuleMode }) =>
+      updateTemplateFinancialDefault(id, mode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      toast.success('Padrao financeiro do template atualizado');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
   if (isLoading) return <Spinner />;
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -839,6 +865,22 @@ function TemplatesTab() {
           <div className="mt-3 flex flex-wrap gap-1.5">
             <Badge tone="info">Progresso {t.default_progress_method}</Badge>
             {t.evm_enabled && <Badge tone="strategic">EVM habilitado</Badge>}
+          </div>
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-1 text-xs font-semibold text-muted">Gestao financeira (padrao ao criar projeto)</p>
+            {canManageFinancial ? (
+              <Select
+                className="h-8 py-0 text-xs"
+                value={t.financial_module_default}
+                onChange={(e) => setDefault.mutate({ id: t.id, mode: e.target.value as FinancialModuleMode })}
+              >
+                {(Object.entries(financialModeLabel) as [FinancialModuleMode, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+            ) : (
+              <Badge tone="neutral">{financialModeLabel[t.financial_module_default]}</Badge>
+            )}
           </div>
         </article>
       ))}
@@ -871,6 +913,79 @@ function TeamsTab() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ModulosTab() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { globalEnabled, canManage, isLoading } = useFinancialModule();
+  const [confirmingOff, setConfirmingOff] = useState(false);
+
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) => setFinancialModuleEnabled(enabled),
+    onSuccess: (_data, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setConfirmingOff(false);
+      toast.success(
+        enabled ? 'Gestao financeira ativada' : 'Gestao financeira desativada',
+        'A alteracao foi registrada na trilha de auditoria.',
+      );
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  if (isLoading) return <Spinner />;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="card p-4">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Wallet className="h-4 w-4" /> Gestao Financeira
+        </h2>
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          Controla a exibicao e utilizacao dos recursos financeiros da plataforma (orcamento,
+          realizado, comprometido, forecast e relatorios financeiros). Projetos individuais podem
+          sobrescrever esta configuracao em Editar projeto, conforme permissao.
+        </p>
+        <div className="flex items-center justify-between rounded-lg bg-surface-2 p-3">
+          <div>
+            <p className="text-sm font-medium">{globalEnabled ? 'Ativada' : 'Desativada'}</p>
+            <p className="text-xs text-muted">Padrao aplicado a projetos com modulo em &quot;Herdar&quot;.</p>
+          </div>
+          {canManage ? (
+            <Button
+              variant={globalEnabled ? 'secondary' : 'primary'}
+              size="sm"
+              onClick={() => (globalEnabled ? setConfirmingOff(true) : toggle.mutate(true))}
+              loading={toggle.isPending}
+            >
+              {globalEnabled ? 'Desativar' : 'Ativar'}
+            </Button>
+          ) : (
+            <Badge tone={globalEnabled ? 'ok' : 'neutral'}>{globalEnabled ? 'Ativada' : 'Desativada'}</Badge>
+          )}
+        </div>
+      </section>
+
+      <ConfirmDialog
+        open={confirmingOff}
+        onClose={() => setConfirmingOff(false)}
+        onConfirm={() => toggle.mutate(false)}
+        loading={toggle.isPending}
+        title="Desativar Gestao Financeira"
+        confirmLabel="Desativar"
+        description={
+          <>
+            Projetos com o modulo financeiro em &quot;Herdar configuracao padrao&quot; deixarao de exibir
+            orcamento, realizado, forecast e relatorios financeiros, e nao entrarao mais nas
+            consolidacoes do dashboard e do portfolio. Nenhum dado financeiro e apagado - projetos
+            com override manual (&quot;Ativar&quot; no proprio projeto) continuam exibindo o modulo normalmente.
+          </>
+        }
+      />
     </div>
   );
 }

@@ -7,21 +7,26 @@ import { Tabs } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { AvatarWithName } from '@/components/ui/Avatar';
 import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
+import { useFinancialModule } from '@/hooks/useFinancialModule';
+import { resolveFinancialEnabled } from '@/lib/financialModule';
 import { describeError } from '@/lib/supabase/client';
 import {
   getProject, getProjectOverview, listProjectMembers, updateProject,
 } from '@/services/projects';
+import type { FinancialModuleMode } from '@/types/domain';
 import { listMilestones, listTasks } from '@/services/tasks';
 import { listActionPlans, listRisks } from '@/services/risks';
 import { listAllocations, listAuditLog, listCalendarConflicts, listDecisions } from '@/services/governance';
 import { formatDate, formatDateTime, relativeFromNow } from '@/utils/format';
 import {
-  auditActionLabel, auditActionTone, entityLabel, projectStatusLabel, priorityLabel, roleLabel,
+  auditActionLabel, auditActionTone, entityLabel, financialModeLabel, projectStatusLabel,
+  priorityLabel, roleLabel,
 } from '@/utils/domain-labels';
 import { ProjectHeader } from './ProjectHeader';
 import { TaskList } from '@/features/tasks/TaskList';
@@ -65,10 +70,13 @@ export function ProjectPage() {
   const actions = useQuery({ queryKey: ['actions', projectId], queryFn: () => listActionPlans(projectId) });
   const members = useQuery({ queryKey: ['members', projectId], queryFn: () => listProjectMembers(projectId) });
 
+  const financialActive = overview.data?.financial_effective_enabled ?? true;
+  const visibleTabs = TABS.filter((t) => t.key !== 'financeiro' || financialActive);
+
   useBreadcrumbs([
     { label: 'Portfolio de Projetos', to: '/portfolio' },
     { label: overview.data?.code ?? '...', to: `/projetos/${projectId}` },
-    { label: TABS.find((t) => t.key === tab)?.label ?? '' },
+    { label: visibleTabs.find((t) => t.key === tab)?.label ?? '' },
   ]);
 
   const [editing, setEditing] = useState(false);
@@ -100,7 +108,7 @@ export function ProjectPage() {
         className="mb-4"
         value={tab}
         onChange={(k) => navigate(`/projetos/${projectId}/${k}`)}
-        items={TABS.map((t) => ({
+        items={visibleTabs.map((t) => ({
           ...t,
           count: t.key === 'tarefas' ? tasks.data?.length
             : t.key === 'riscos' ? risks.data?.length
@@ -119,7 +127,7 @@ export function ProjectPage() {
           module={`tasks-project`}
         />
       )}
-      {tab === 'financeiro' && <FinancialTab projectId={projectId} canManage={canManage} canEdit={canEdit} />}
+      {tab === 'financeiro' && financialActive && <FinancialTab projectId={projectId} canManage={canManage} canEdit={canEdit} />}
       {tab === 'recursos' && <ResourcesTab projectId={projectId} members={members.data ?? []} loading={members.isLoading} />}
       {tab === 'riscos' && (
         <RiskTable risks={risks.data ?? []} loading={risks.isLoading} projectId={projectId} canEdit={canEdit} module="risks-project" />
@@ -419,6 +427,9 @@ function EditProjectModal({
 }: { open: boolean; onClose: () => void; project: NonNullable<Awaited<ReturnType<typeof getProject>>> }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const canManageFinancial = can('financial_module.manage');
+  const { globalEnabled, effectiveEnabled } = useFinancialModule(project.financial_module_mode);
   const [form, setForm] = useState({
     name: project.name, category: project.category, phase: project.phase ?? '',
     status: project.status, priority: project.priority,
@@ -427,10 +438,12 @@ function EditProjectModal({
     expected_results: project.expected_results ?? '',
     progress_method: project.progress_method,
     progress_actual: String(project.progress_actual),
+    financial_module_mode: project.financial_module_mode,
   });
+  const [confirmingFinancialOff, setConfirmingFinancialOff] = useState(false);
 
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (financialModeOverride?: FinancialModuleMode) => {
       if (form.target_date && form.start_date && form.target_date < form.start_date) {
         throw new Error('A data-alvo deve ser posterior a data de inicio.');
       }
@@ -449,16 +462,35 @@ function EditProjectModal({
         ...(form.progress_method === 'manual'
           ? { progress_actual: Math.max(0, Math.min(100, Number(form.progress_actual) || 0)) }
           : {}),
+        ...(canManageFinancial
+          ? { financial_module_mode: financialModeOverride ?? form.financial_module_mode }
+          : {}),
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', project.id] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Projeto atualizado');
+      setConfirmingFinancialOff(false);
       onClose();
     },
     onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
   });
+
+  function handleSave() {
+    // Desativar o modulo financeiro num projeto que ja tem dados exige uma
+    // confirmacao extra: os dados continuam intactos, mas somem da experiencia
+    // e das consolidacoes - a pessoa precisa saber disso antes de confirmar.
+    const willDisableFinancial = canManageFinancial
+      && effectiveEnabled
+      && form.financial_module_mode !== project.financial_module_mode
+      && !resolveFinancialEnabled(form.financial_module_mode, globalEnabled);
+    if (willDisableFinancial) {
+      setConfirmingFinancialOff(true);
+      return;
+    }
+    save.mutate(undefined);
+  }
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -471,7 +503,7 @@ function EditProjectModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+          <Button onClick={handleSave} loading={save.isPending}>Salvar</Button>
         </>
       }
     >
@@ -518,7 +550,34 @@ function EditProjectModal({
         <Field label="Resultados esperados" className="sm:col-span-2">
           <Textarea value={form.expected_results} onChange={(e) => set('expected_results', e.target.value)} />
         </Field>
+
+        {canManageFinancial && (
+          <Field
+            label="Modulos do projeto - Gestao financeira"
+            className="sm:col-span-2"
+            hint={`Configuracao global: ${globalEnabled ? 'Ativada' : 'Desativada'} · Status efetivo neste projeto: ${effectiveEnabled ? 'Ativada' : 'Desativada'}`}
+          >
+            <Select
+              value={form.financial_module_mode}
+              onChange={(e) => setForm((f) => ({ ...f, financial_module_mode: e.target.value as FinancialModuleMode }))}
+            >
+              {(Object.entries(financialModeLabel) as [FinancialModuleMode, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={confirmingFinancialOff}
+        onClose={() => setConfirmingFinancialOff(false)}
+        onConfirm={() => save.mutate(form.financial_module_mode)}
+        loading={save.isPending}
+        title="Desativar gestao financeira neste projeto"
+        confirmLabel="Desativar"
+        description="Este projeto possui informacoes financeiras cadastradas. Ao desativar a gestao financeira, os dados serao preservados, mas ficarao ocultos e nao serao considerados nas consolidacoes."
+      />
     </Modal>
   );
 }

@@ -6,13 +6,14 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
 import {
   createProject, listActiveProfiles, listCompanies, listTeams, listTemplates,
 } from '@/services/projects';
 import { toISODate } from '@/utils/format';
-import { priorityLabel } from '@/utils/domain-labels';
-import type { Priority } from '@/types/domain';
+import { financialModeLabel, priorityLabel } from '@/utils/domain-labels';
+import type { FinancialModuleMode, Priority } from '@/types/domain';
 
 const schema = z.object({
   code: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{1,29}$/, 'Use letras maiusculas, numeros, ponto, hifen ou underscore (2 a 30 caracteres).'),
@@ -30,11 +31,15 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const canManageFinancial = can('financial_module.manage');
 
   const [form, setForm] = useState({
     code: '', name: '', template_id: '', category: '', priority: 'media' as Priority,
     owner_id: '', sponsor_id: '', company_id: '', team_id: '',
     start_date: toISODate(new Date()), target_date: '', budget: '', objective: '',
+    financial_module_mode: 'inherit' as FinancialModuleMode,
+    financialModeTouched: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -46,10 +51,12 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const set = (key: keyof typeof form, value: string) => {
     setForm((f) => {
       const next = { ...f, [key]: value };
-      // Ao escolher o template, herda a categoria como ponto de partida.
+      // Ao escolher o template, herda categoria e padrao financeiro como ponto
+      // de partida - o usuario ainda pode mudar antes de salvar.
       if (key === 'template_id' && value) {
         const tpl = templates.data?.find((t) => t.id === value);
         if (tpl && !f.category) next.category = tpl.category;
+        if (tpl && !f.financialModeTouched) next.financial_module_mode = tpl.financial_module_default;
       }
       return next;
     });
@@ -86,6 +93,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
         target_date: parsed.data.target_date ?? null,
         budget: parsed.data.budget,
         objective: form.objective || null,
+        financial_module_mode: form.financial_module_mode,
       });
     },
     onSuccess: (id) => {
@@ -179,6 +187,29 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
         <Field label="Objetivo" className="sm:col-span-2">
           <Textarea value={form.objective} onChange={(e) => set('objective', e.target.value)} placeholder="O que o projeto entrega e por que ele existe." />
         </Field>
+
+        {canManageFinancial && (
+          <Field
+            label="Gestao financeira"
+            className="sm:col-span-2"
+            hint={
+              form.template_id
+                ? `Herdado do template: ${financialModeLabel[templates.data?.find((t) => t.id === form.template_id)?.financial_module_default ?? 'inherit']}`
+                : undefined
+            }
+          >
+            <Select
+              value={form.financial_module_mode}
+              onChange={(e) => setForm((f) => ({
+                ...f, financial_module_mode: e.target.value as FinancialModuleMode, financialModeTouched: true,
+              }))}
+            >
+              {(Object.entries(financialModeLabel) as [FinancialModuleMode, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
     </Modal>
   );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pencil, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Pencil, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
 import type { ProjectOverview } from '@/types/domain';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -69,6 +69,9 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
               {Number(project.days_overdue) > 0 && (
                 <Badge tone="danger">{project.days_overdue} dias de atraso</Badge>
               )}
+              {project.financial_effective_enabled && (
+                <Badge tone="strategic"><Wallet className="mr-1 inline h-3 w-3" />Financeiro ativo</Badge>
+              )}
             </div>
           </div>
 
@@ -118,9 +121,19 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
             <Info label="Empresa" value={project.company_name ?? '—'} />
             <Info label="Inicio" value={formatDate(project.start_date)} />
             <Info label="Data-alvo" value={formatDate(project.target_date)} />
-            <Info label="Orcamento" value={formatCurrency(project.budget)} />
-            <Info label="Forecast" value={formatCurrency(project.forecast)}
-              tone={Number(project.forecast_variance_pct) > 5 ? 'danger' : undefined} />
+            {project.financial_effective_enabled ? (
+              <>
+                <Info label="Orcamento" value={formatCurrency(project.budget)} />
+                <Info label="Forecast" value={formatCurrency(project.forecast)}
+                  tone={Number(project.forecast_variance_pct) > 5 ? 'danger' : undefined} />
+              </>
+            ) : (
+              <>
+                <Info label="Riscos criticos" value={String(project.critical_risks)}
+                  tone={Number(project.critical_risks) > 0 ? 'danger' : undefined} />
+                <Info label="Proximo marco" value={project.next_milestone_name ?? '—'} />
+              </>
+            )}
           </dl>
         </div>
 

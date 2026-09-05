@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import type {
-  Project, ProjectOverview, Profile, Team, Company, ProjectTemplate, Priority,
+  Project, ProjectOverview, Profile, Team, Company, ProjectTemplate, Priority, FinancialModuleMode,
 } from '@/types/domain';
 
 const PROJECT_COLUMNS =
@@ -8,7 +8,8 @@ const PROJECT_COLUMNS =
   'executive_summary,executive_summary_updated_at,sponsor_id,owner_id,team_id,company_id,' +
   'priority,status,phase,health,health_is_manual,health_override_reason,health_overridden_at,' +
   'progress_method,progress_planned,progress_actual,start_date,target_date,' +
-  'baseline_start_date,baseline_target_date,actual_end_date,evm_enabled,archived_at,updated_at';
+  'baseline_start_date,baseline_target_date,actual_end_date,evm_enabled,financial_module_mode,' +
+  'archived_at,updated_at';
 
 export async function listProjectOverview(): Promise<ProjectOverview[]> {
   const { data, error } = await supabase
@@ -54,6 +55,8 @@ export interface CreateProjectInput {
   target_date: string | null;
   budget: number | null;
   objective?: string | null;
+  /** Omitido = 'inherit'. Ignorado no banco se quem chama nao gerenciar o modulo financeiro. */
+  financial_module_mode?: FinancialModuleMode;
 }
 
 /**
@@ -75,6 +78,7 @@ export async function createProject(input: CreateProjectInput): Promise<string> 
       p_category: input.category,
       p_priority: input.priority,
       p_budget: input.budget,
+      p_financial_module_mode: input.financial_module_mode ?? null,
     });
     if (error) throw error;
     return data as string;
@@ -96,6 +100,7 @@ export async function createProject(input: CreateProjectInput): Promise<string> 
       baseline_start_date: input.start_date,
       baseline_target_date: input.target_date,
       objective: input.objective ?? null,
+      financial_module_mode: input.financial_module_mode ?? 'inherit',
     })
     .select('id')
     .single();
@@ -206,8 +211,19 @@ export async function listCompanies(): Promise<Company[]> {
 export async function listTemplates(): Promise<ProjectTemplate[]> {
   const { data, error } = await supabase
     .from('project_templates')
-    .select('id,code,name,category,description,default_progress_method,evm_enabled,active')
+    .select('id,code,name,category,description,default_progress_method,evm_enabled,financial_module_default,active')
     .eq('active', true).order('name');
   if (error) throw error;
   return (data ?? []) as unknown as ProjectTemplate[];
+}
+
+/** Somente o padrao financeiro do template - alterado em Configuracoes > Templates. */
+export async function updateTemplateFinancialDefault(
+  templateId: string, financialModuleDefault: FinancialModuleMode,
+): Promise<void> {
+  const { error } = await supabase
+    .from('project_templates')
+    .update({ financial_module_default: financialModuleDefault })
+    .eq('id', templateId);
+  if (error) throw error;
 }

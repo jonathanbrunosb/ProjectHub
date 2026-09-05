@@ -1,6 +1,7 @@
 import type {
-  ActionStatus, CalendarWindowKind, DecisionStatus, Health, Priority, ProjectStatus,
-  RiskCriticality, RiskStatus, RiskStrategy, RoleKey, TaskStatus, AuditAction, StatusReportState,
+  ActionStatus, CalendarWindowKind, DecisionStatus, FinancialModuleMode, Health, Priority,
+  ProjectStatus, RiskCriticality, RiskStatus, RiskStrategy, RoleKey, TaskStatus, AuditAction,
+  StatusReportState,
 } from '@/types/domain';
 import type { Tone } from '@/components/ui/Badge';
 
@@ -42,6 +43,10 @@ export const priorityLabel: Record<Priority, string> = {
 
 export const priorityTone: Record<Priority, Tone> = {
   baixa: 'neutral', media: 'info', alta: 'warn', critica: 'danger',
+};
+
+export const financialModeLabel: Record<FinancialModuleMode, string> = {
+  inherit: 'Herdar configuracao padrao', enabled: 'Ativar neste projeto', disabled: 'Desativar neste projeto',
 };
 
 export const taskStatusLabel: Record<TaskStatus, string> = {
