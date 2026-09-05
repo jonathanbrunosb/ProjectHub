@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/Feedback';
 import { useEnvironment } from '@/app/EnvironmentProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 
 // Route splitting: cada modulo pesado entra em seu proprio chunk.
@@ -39,6 +40,7 @@ export function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/cadastro" element={<SignupPage />} />
+          <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppShell />}>
               <Route index element={<DashboardPage />} />

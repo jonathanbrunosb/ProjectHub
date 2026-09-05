@@ -14,6 +14,10 @@ interface AuthApi {
   /** Retorna true se a sessao ja veio autenticada (confirmacao de e-mail desligada). */
   signUp: (email: string, password: string, fullName: string) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
+  /** Dispara o e-mail com o codigo de recuperacao. Nao revela se o e-mail existe. */
+  requestPasswordReset: (email: string) => Promise<void>;
+  /** Valida o codigo de 6 digitos e ja troca a senha em uma unica chamada. */
+  confirmPasswordReset: (email: string, token: string, newPassword: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** RBAC de interface. A autorizacao real e' aplicada por RLS no PostgreSQL. */
   can: (capability: Capability) => boolean;
@@ -129,6 +133,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await logAppEvent('logout', 'auth');
       await supabase.auth.signOut();
       setProfile(null);
+    },
+    /**
+     * Codigo por e-mail, nao link magico: o HashRouter usa `#/rota` para
+     * navegacao, e o link de recuperacao padrao do Supabase tambem viria com
+     * `#access_token=...` - as duas coisas disputam o mesmo fragmento da URL.
+     * Um codigo digitado no formulario nao depende de URL nenhuma, entao
+     * funciona igual em qualquer navegador, inclusive um diferente do que fez
+     * o pedido (comum quando o e-mail e' aberto no celular ou no Outlook web).
+     */
+    requestPasswordReset: async (email) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+    },
+    confirmPasswordReset: async (email, token, newPassword) => {
+      const { error: verifyError } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' });
+      if (verifyError) throw verifyError;
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      await logAppEvent('login', 'auth', { data: { via: 'password_reset' } });
     },
     refreshProfile: async () => {
       if (!session?.user) return;
