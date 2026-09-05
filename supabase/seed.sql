@@ -5,6 +5,24 @@
 --   psql "$DB_URL" -f supabase/seed.sql
 -- Senha de todos os usuarios demo: Pmo@2026
 -- =============================================================================
+-- =============================================================================
+-- GUARDA DE AMBIENTE
+-- Este seed cria massa ficticia e pertence exclusivamente ao ambiente de QA.
+-- Se o banco se declarar como PRD, a carga e' abortada antes de qualquer
+-- escrita - dados de teste nunca podem contaminar Producao.
+-- =============================================================================
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+     where table_schema = 'public' and table_name = 'app_environment'
+  ) and exists (
+    select 1 from public.app_environment where environment = 'PRD'
+  ) then
+    raise exception 'Seeds de teste sao proibidos em Producao (app_environment = PRD).';
+  end if;
+end $$;
+
 begin;
 
 -- -----------------------------------------------------------------------------
@@ -76,7 +94,7 @@ insert into public.cost_centers (code, name) values
 on conflict (code) do nothing;
 
 -- Papeis e vinculos dos usuarios demo
-update public.profiles set role = 'admin',         full_name = 'Ana Ribeiro',    job_title = 'Gerente de Contabilidade', company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000001', weekly_capacity_hours = 40 where email = 'admin@pmocontabil.dev';
+update public.profiles set can_switch_environment = true, role = 'admin',         full_name = 'Ana Ribeiro',    job_title = 'Gerente de Contabilidade', company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000001', weekly_capacity_hours = 40 where email = 'admin@pmocontabil.dev';
 update public.profiles set role = 'pmo',           full_name = 'Carlos Menezes', job_title = 'PMO Contabil',             company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000003', weekly_capacity_hours = 40 where email = 'pmo@pmocontabil.dev';
 update public.profiles set role = 'sponsor',       full_name = 'Helena Duarte',  job_title = 'Diretora de Controladoria',company_id = '22222222-2222-4222-8222-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000003', weekly_capacity_hours = 10 where email = 'sponsor@pmocontabil.dev';
 update public.profiles set role = 'project_owner', full_name = 'Rafael Souza',   job_title = 'Coordenador Contabil',     company_id = '22222222-2222-4222-8222-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000001', weekly_capacity_hours = 40 where email = 'owner1@pmocontabil.dev';

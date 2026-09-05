@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { supabase, isEnvironmentConfigured } from '@/lib/supabase/client';
+import { useEnvironment } from './EnvironmentProvider';
 import { logAppEvent } from '@/lib/supabase/audit';
 import type { Profile, RoleKey } from '@/types/domain';
 
@@ -53,12 +54,20 @@ const matrix: Record<Capability, RoleKey[]> = {
 const AuthContext = createContext<AuthApi | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Cada ambiente e' um projeto Supabase com Auth proprio: sessao e perfil sao
+  // recarregados do zero na troca, nunca herdados do ambiente anterior.
+  const { environment } = useEnvironment();
+  const configured = isEnvironmentConfigured(environment);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [loading, setLoading] = useState(configured);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    setSession(null);
+    setProfile(null);
+    setLoading(configured);
+
+    if (!configured) return;
     let active = true;
 
     supabase.auth.getSession().then(({ data }) => {
@@ -68,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
       setSession(next);
       if (!next) {
         setProfile(null);
@@ -76,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => { active = false; sub.subscription.unsubscribe(); };
-  }, []);
+  }, [environment, configured]);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -84,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     supabase
       .from('profiles')
-      .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active')
+      .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
       .eq('id', session.user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -93,13 +103,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       });
     return () => { active = false; };
-  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, environment]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const api = useMemo<AuthApi>(() => ({
     session,
     profile,
     loading,
-    configured: isSupabaseConfigured,
+    configured,
     signIn: async (email, password) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -124,14 +134,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session?.user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active')
+        .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
         .eq('id', session.user.id)
         .maybeSingle();
       setProfile((data as Profile) ?? null);
     },
     can: (capability) => (profile ? matrix[capability].includes(profile.role) : false),
     hasRole: (...roles) => (profile ? roles.includes(profile.role) : false),
-  }), [session, profile, loading]);
+  }), [session, profile, loading, configured]);
 
   return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
 }

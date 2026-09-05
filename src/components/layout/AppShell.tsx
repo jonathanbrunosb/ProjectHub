@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { Breadcrumbs, type Crumb } from './Breadcrumbs';
+import { EnvironmentMismatchBanner } from './EnvironmentMismatchBanner';
 
 const CrumbContext = createContext<{ setCrumbs: (c: Crumb[]) => void } | null>(null);
 
@@ -42,6 +43,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
         />
         <div className={collapsed ? 'lg:pl-16 transition-[padding]' : 'lg:pl-64 transition-[padding]'}>
           <Topbar onOpenMenu={() => setMobileOpen(true)} breadcrumbs={<Breadcrumbs items={crumbs} />} />
+          <EnvironmentMismatchBanner />
           <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
             {children ?? <Outlet />}
           </main>

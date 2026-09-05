@@ -22,6 +22,7 @@ e leitura executiva em segundos.
 | **Gestão de riscos** | Riscos e issues em matriz 5×5, estratégia, plano de mitigação, risco residual e planos de ação corporativos. |
 | **Governança** | Decisões e aprovações rastreáveis, status reports imutáveis após publicação, trilha de auditoria e relatórios prontos para reunião. |
 | **Diferencial contábil** | Calendário crítico (fechamento, ITR, DFP, ECD, ECF, inventário, *freeze*) que sinaliza automaticamente entregas de projeto agendadas dentro de janelas sensíveis. |
+| **Ambientes segregados** | QA (dados fictícios permanentes) e PRD (dados oficiais) em **projetos Supabase separados**, com troca restrita por permissão e auditada. Sem contaminação possível. |
 
 ---
 
@@ -42,8 +43,12 @@ npm ci
 
 # 2. Variáveis de ambiente (somente chaves públicas)
 cp .env.example .env.local
-#   VITE_SUPABASE_URL=https://<seu-projeto>.supabase.co
-#   VITE_SUPABASE_ANON_KEY=<chave anon>
+#   VITE_SUPABASE_QA_URL=https://<projeto-qa>.supabase.co
+#   VITE_SUPABASE_QA_ANON_KEY=<anon de QA>
+#   VITE_SUPABASE_PRD_URL=https://<projeto-prd>.supabase.co     # opcional em dev
+#   VITE_SUPABASE_PRD_ANON_KEY=<anon de PRD>                    # opcional em dev
+#
+#   VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY continuam valendo como QA.
 
 # 3. Banco de dados (Supabase CLI)
 supabase start
@@ -65,12 +70,13 @@ npm run dev
 | `npm run build` | Build de produção (typecheck + Vite) |
 | `npm run lint` | ESLint (zero warnings tolerados) |
 | `npm run test` | Testes unitários e de componente (Vitest) |
-| `./supabase/tests/run.sh` | Schema + seed + testes de RLS e de regras de negócio |
+| `./supabase/tests/run.sh` | Schema + seed + testes de RLS, de regras de negócio e de ambientes |
 
 ---
 
 ## Usuários do seed demonstrativo
 
+Pertencem **exclusivamente ao ambiente de QA** — não são replicados para Produção.
 Senha de todos: `Pmo@2026`
 
 | E-mail | Perfil | Enxerga |
@@ -93,8 +99,12 @@ progressos, riscos, custos, owners e prazos distintos.
 
 1. **Settings → Pages → Source:** *GitHub Actions*.
 2. **Settings → Secrets and variables → Actions**, crie:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_SUPABASE_QA_URL` e `VITE_SUPABASE_QA_ANON_KEY`
+   - `VITE_SUPABASE_PRD_URL` e `VITE_SUPABASE_PRD_ANON_KEY`
+
+   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` seguem funcionando como QA, para não
+   quebrar instalações anteriores. O Vite inlineia os valores no build — **trocar um
+   segredo exige novo deploy**.
 3. Faça push na `main`. O workflow `deploy.yml` builda, verifica a ausência de
    segredos no bundle e publica.
 
@@ -140,15 +150,18 @@ se configurado; senão a do `github.io`) em *Site URL* e *Redirect URLs*:
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — estrutura de código, modelo de dados e decisões técnicas
 - [`docs/SEGURANCA.md`](docs/SEGURANCA.md) — modelo de permissões, RLS, auditoria e checklist de hardening
 - [`docs/OPERACAO.md`](docs/OPERACAO.md) — migrations, seed, testes, automações e roadmap
+- [`docs/AMBIENTES.md`](docs/AMBIENTES.md) — segregação QA/PRD, troca de ambiente, guardas e provisionamento de Produção
 
 ---
 
 ## Estado atual e próximos passos
 
-**Implementado e validado:** schema com 13 migrations versionadas, RLS em todas as
+**Implementado e validado:** schema com 15 migrations versionadas, RLS em todas as
 tabelas expostas (47 asserções de teste), regras de negócio no banco (38 asserções),
-42 testes de frontend, build e deploy automatizados.
+segregação QA/PRD (14 asserções), 42 testes de frontend, build e deploy automatizados.
 
 **Pendências conhecidas** — ver [`docs/OPERACAO.md`](docs/OPERACAO.md):
 upload de anexos pela interface, Edge Functions de integração (Teams/e-mail/Power BI),
-agendamento do motor de alertas, dashboards montáveis pelo usuário e MFA.
+agendamento do motor de alertas, dashboards montáveis pelo usuário, MFA e o
+provisionamento do projeto Supabase de Produção (código pronto; checklist em
+[`docs/AMBIENTES.md`](docs/AMBIENTES.md)).

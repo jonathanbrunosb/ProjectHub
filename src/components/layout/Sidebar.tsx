@@ -4,6 +4,7 @@ import { cn } from '@/utils/cn';
 import { navigation } from './navigation';
 import { useAuth } from '@/app/AuthProvider';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { EnvironmentSwitcher } from './EnvironmentSwitcher';
 
 export function Sidebar({
   collapsed, onToggle, mobileOpen, onCloseMobile,
@@ -33,6 +34,8 @@ export function Sidebar({
             </div>
           )}
         </div>
+
+        <EnvironmentSwitcher collapsed={collapsed} />
 
         <nav className="flex-1 overflow-y-auto px-2 py-3">
           {navigation.map((group) => {

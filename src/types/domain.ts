@@ -36,7 +36,8 @@ export type SavedViewScope = 'privada' | 'compartilhada' | 'padrao_projeto' | 'p
 export type AuditAction =
   | 'login' | 'logout' | 'login_failed' | 'insert' | 'update' | 'delete'
   | 'status_change' | 'health_change' | 'financial_change' | 'schedule_change'
-  | 'ownership_change' | 'export' | 'permission_change' | 'config_change';
+  | 'ownership_change' | 'export' | 'permission_change' | 'config_change'
+  | 'environment_switch' | 'environment_switch_denied';
 export type CalendarWindowKind =
   | 'fechamento_mensal' | 'fechamento_trimestral' | 'itr' | 'dfp' | 'ecd' | 'ecf'
   | 'entrega_regulatoria' | 'inventario' | 'auditoria' | 'freeze' | 'outro';
@@ -54,6 +55,8 @@ export interface Profile {
   avatar_url: string | null;
   weekly_capacity_hours: number;
   active: boolean;
+  /** Permite alternar entre QA e PRD pelo seletor da interface. */
+  can_switch_environment: boolean;
 }
 
 export interface Company { id: string; code: string; name: string; active: boolean }

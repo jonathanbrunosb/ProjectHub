@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Input } from './Input';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 
 /**
  * Confirmacao para acoes destrutivas. Quando `confirmText` e' informado, exige
@@ -21,6 +23,7 @@ export function ConfirmDialog({
   danger?: boolean;
   loading?: boolean;
 }) {
+  const { isPRD } = useEnvironment();
   const [typed, setTyped] = useState('');
   const blocked = Boolean(confirmText) && typed.trim() !== confirmText;
 
@@ -45,6 +48,17 @@ export function ConfirmDialog({
       }
     >
       <div className="space-y-3 text-sm text-muted">
+        {/* Aviso restrito a acoes destrutivas em Producao: aplicar em toda
+            operacao geraria fadiga e o alerta perderia o efeito. */}
+        {isPRD && (
+          <div className="flex gap-2.5 rounded-lg border border-warn/30 bg-warn/10 p-3 text-xs text-warn">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <div>
+              <p className="font-semibold">Você está operando no ambiente de PRODUÇÃO.</p>
+              <p className="mt-0.5 text-muted">Esta ação poderá alterar dados oficiais.</p>
+            </div>
+          </div>
+        )}
         <div>{description}</div>
         {confirmText && (
           <div>

@@ -43,8 +43,9 @@ enxergar as linhas para avaliar a própria política.
 ### Proteções específicas
 
 - **Escalação de privilégio:** o gatilho `app.guard_profile_role` impede que um usuário
-  altere o próprio papel ou ative/desative outros — a política de `UPDATE` sozinha
-  permitiria editar a própria linha.
+  altere o próprio papel, ative/desative outros ou conceda a si mesmo o acesso à troca de
+  ambiente (`can_switch_environment`) — a política de `UPDATE` sozinha permitiria editar a
+  própria linha.
 - **IDOR entre projetos:** toda tabela filha filtra por `app.can_read_project(project_id)`.
   Um Project Owner não enxerga sequer a existência de projeto alheio.
 - **Trilha de auditoria:** append-only. Um gatilho `BEFORE UPDATE OR DELETE` levanta
@@ -54,6 +55,26 @@ enxergar as linhas para avaliar a própria política.
   URL assinada. Tipos MIME e tamanho (50 MB) restritos no bucket.
 - **Validação de payload:** Zod no frontend; `CHECK`, `UNIQUE` e `FOREIGN KEY` no banco.
   A validação do cliente é usabilidade; a do banco é o controle.
+
+## Segregação de ambientes
+
+QA e PRD são projetos Supabase separados, cada um com **Auth, Storage e RLS próprios**. O
+JWT de um projeto nunca é apresentado ao outro: cada cliente usa seu próprio `storageKey`
+(`pmo.auth.QA` / `pmo.auth.PRD`) e a sessão é revalidada contra o projeto de destino a cada
+troca.
+
+A seleção de ambiente no frontend é **UX, não autorização** — vale o mesmo princípio do
+RBAC: quem autoriza é a RLS de cada banco. Um usuário sem `can_switch_environment` que
+force `?env=PRD` continua sendo barrado, e a tentativa é auditada
+(`environment_switch_denied`). Mesmo que a troca ocorresse, sem credencial válida naquele
+projeto não há leitura possível.
+
+`public.app_environment` faz o banco declarar a que ambiente pertence, e a aplicação alerta
+quando a declaração diverge do ambiente selecionado — o que transforma um erro de
+configuração silencioso (variáveis de PRD apontando para QA) em falha visível.
+
+`supabase/seed.sql` aborta com exceção se o banco se declarar PRD: dado fictício nunca
+entra em Produção por acidente de operação.
 
 ## Segredos
 
@@ -71,9 +92,11 @@ não pelo cliente, que não é fonte confiável. O gatilho classifica semanticam
 (`status_change`, `health_change`, `financial_change`, `schedule_change`,
 `ownership_change`) e grava `old_data`, `new_data` e `changed_fields`.
 
-Eventos com contexto de sessão (login, logout, exportação) usam a RPC
-`public.log_app_event`, que só aceita esse conjunto restrito de ações e rejeita chamada
-não autenticada.
+Eventos com contexto de sessão (login, logout, exportação, mudança de configuração e
+troca de ambiente — concedida ou negada) usam a RPC `public.log_app_event`, que só aceita
+esse conjunto restrito de ações e rejeita chamada não autenticada. A tentativa de registrar
+uma ação de dados por essa via é recusada: alteração de dado é capturada pelo gatilho, não
+declarada pelo cliente.
 
 Registra-se: quem, quando (UTC), qual ação, qual entidade, qual projeto, o antes, o
 depois, os campos alterados, IP, user agent, correlation id e origem.
@@ -96,6 +119,12 @@ limpo no CI, assumindo a identidade de cada perfil:
 - Status report publicado não pode ser alterado.
 - Override de saúde exige justificativa e alçada.
 
+`supabase/tests/03_environment.sql` — **14 asserções** sobre a segregação de ambientes:
+declaração única e restrita a (QA, PRD), impossibilidade de segunda linha, apenas Admin
+altera a declaração, colaborador e PMO não se autoconcedem `can_switch_environment`,
+Admin concede normalmente, e as trocas — concedidas e negadas — chegam à trilha com origem
+e destino.
+
 ## Checklist de hardening antes de produção
 
 - [ ] Habilitar MFA no Supabase Auth (o schema já está preparado).
@@ -104,5 +133,9 @@ limpo no CI, assumindo a identidade de cada perfil:
 - [ ] Aplicar rate limit nas Edge Functions sensíveis.
 - [ ] Revisar `GRANT` no schema `public` após qualquer nova migration.
 - [ ] Confirmar que toda tabela nova tem RLS habilitada — migrations posteriores à `0011`
-      precisam habilitar explicitamente (é o caso de `health_rules` na `0012`).
+      precisam habilitar explicitamente (é o caso de `health_rules` na `0012` e de
+      `app_environment` na `0014`).
+- [ ] Confirmar em PRD: `select environment from public.app_environment` retorna `PRD`.
+- [ ] Confirmar que o seed **não** foi executado em PRD (`select count(*) from public.projects`).
+- [ ] Conceder `can_switch_environment` apenas a quem opera os dois ambientes.
 - [ ] Rodar `./supabase/tests/run.sh` no pipeline a cada alteração de schema.

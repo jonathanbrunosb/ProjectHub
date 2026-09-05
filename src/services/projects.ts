@@ -158,7 +158,7 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 export async function listProfiles(): Promise<Profile[]> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active')
+    .select('id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
     .eq('active', true)
     .order('full_name');
   if (error) throw error;

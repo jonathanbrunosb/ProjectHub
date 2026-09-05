@@ -30,10 +30,19 @@ jobs:
 
       - name: Build de producao
         env:
-          # Somente chaves publicas. A service_role nunca e exposta ao frontend:
-          # configure as duas variaveis em Settings > Secrets and variables > Actions.
+          # Somente chaves publicas (anon). A service_role nunca e exposta ao
+          # frontend - operacoes privilegiadas ficam em Edge Functions.
+          # Configure em Settings > Secrets and variables > Actions.
+          #
+          # QA e PRD sao projetos Supabase separados. Sem as chaves _QA_, o
+          # build usa VITE_SUPABASE_URL/ANON_KEY como ambiente de QA, o que
+          # mantem instalacoes anteriores funcionando sem reconfiguracao.
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_QA_URL: ${{ secrets.VITE_SUPABASE_QA_URL }}
+          VITE_SUPABASE_QA_ANON_KEY: ${{ secrets.VITE_SUPABASE_QA_ANON_KEY }}
+          VITE_SUPABASE_PRD_URL: ${{ secrets.VITE_SUPABASE_PRD_URL }}
+          VITE_SUPABASE_PRD_ANON_KEY: ${{ secrets.VITE_SUPABASE_PRD_ANON_KEY }}
           # Dominio proprio (public/CNAME) serve o app na raiz. Sem esse arquivo,
           # o GitHub Pages usaria /<repo>/ e o base path precisaria refletir isso.
           VITE_BASE_PATH: /

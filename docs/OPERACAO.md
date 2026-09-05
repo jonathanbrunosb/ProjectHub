@@ -19,6 +19,15 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `0011_rls.sql` | RBAC, funções de autorização e políticas RLS |
 | `0012_health_views.sql` | Health score, `v_project_overview`, motor de alertas |
 | `0013_storage_rpc.sql` | Storage privado, criação por template, publicação de report |
+| `0014_environment.sql` | Declaração de ambiente (`app_environment`), `can_switch_environment`, ações de auditoria |
+| `0015_environment_audit.sql` | Auditoria da troca de ambiente, guarda de privilégio, gatilho tolerante a PK não-UUID |
+
+> A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
+> usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
+
+**As duas bases recebem as mesmas migrations, sempre em ordem.** Alteração estrutural
+manual em PRD é proibida: cria divergência de schema que só aparece quando a próxima
+migration falha. Ver [AMBIENTES.md](AMBIENTES.md).
 
 > Ao criar uma migration nova, **habilite RLS explicitamente** na tabela: a `0011` só
 > alcança as tabelas que existiam quando ela rodou.
@@ -35,20 +44,29 @@ supabase db reset                 # migrations + seed
 psql "$DATABASE_URL" -f supabase/seed.sql   # apenas o seed
 ```
 
-Destinado a desenvolvimento e homologação. **Não use em produção.**
+Destinado a QA. **Nunca em produção** — e isso não depende de disciplina: o seed começa
+com uma guarda que aborta a execução se o banco se declarar PRD:
+
+```
+ERROR: Seeds de teste sao proibidos em Producao (app_environment = PRD).
+```
+
+Todo o dado fictício, inclusive o usuário técnico `admin@pmocontabil.dev`, pertence a QA e
+não é replicado para PRD.
 
 ## Testes
 
 ```bash
 npm run test                # 42 testes de frontend (Vitest + Testing Library)
-./supabase/tests/run.sh     # 85 asserções no banco (47 de RLS + 38 de regras)
+./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
 Cobertura do banco: progresso ponderado (incluindo subtarefas e canceladas), progresso
 manual preservado, restrições de domínio, reprogramação de prazo, revisão de orçamento,
 resumo financeiro, score e matriz de risco, health score automático, validação de campos
-personalizados, imutabilidade de status report, conflito de calendário e captura da
-auditoria.
+personalizados, imutabilidade de status report, conflito de calendário, captura da
+auditoria e segregação de ambientes (declaração única, restrição a Admin, impossibilidade
+de autoconcessão de `can_switch_environment`, registro das trocas concedidas e negadas).
 
 Cobertura do frontend: consolidação de KPIs do portfólio, distribuições, curva financeira,
 capacidade por equipe, formatação e fuso de datas, mapeamento tipado de campos
@@ -90,6 +108,26 @@ Não é preciso configurar nenhuma variável nova: `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` e `SUPABASE_ANON_KEY` já existem automaticamente no
 ambiente de toda Edge Function no Supabase.
 
+## Ambientes QA e PRD
+
+QA e PRD são **projetos Supabase separados**. O provisionamento de PRD, as variáveis de
+ambiente, os segredos do GitHub e o checklist completo estão em
+**[AMBIENTES.md](AMBIENTES.md)**.
+
+Resumo operacional:
+
+| | QA | PRD |
+|---|---|---|
+| Projeto Supabase | Existente | A provisionar |
+| Migrations `0001` → `0015` | Sim | Sim, as mesmas |
+| `seed.sql` | Sim | **Nunca** (bloqueado por guarda) |
+| `app_environment` | `QA` | `PRD` (definir manualmente após as migrations) |
+| Edge Function `admin-create-user` | Publicada | Publicar |
+| Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
+
+O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
+não basta salvar no GitHub.
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -115,12 +153,17 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
 | SMTP próprio | Não configurado (usa o e-mail nativo do Supabase, limitado) | Configurar em `Authentication → SMTP Settings` para habilitar convite por e-mail e recuperação de senha confiáveis |
+| Projeto Supabase de PRD | Código pronto; ambiente aparece desabilitado sem as variáveis `_PRD_` | Seguir o checklist de provisionamento em [AMBIENTES.md](AMBIENTES.md) |
 | Comentários por entidade | Tabela e RLS prontas | Componente de thread |
 | EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
 | Edição de dependências pela interface | Tabela e visualização no Gantt prontas | Editor de predecessora/sucessora |
 
 ## Riscos técnicos a acompanhar
 
+- **Duplicação operacional.** Dois projetos significam duas execuções de migration, dois
+  deploys de Edge Function e dois conjuntos de segredos. É o custo consciente de tornar a
+  contaminação QA→PRD fisicamente impossível. Mitigue automatizando a aplicação de
+  migrations antes que o número de ambientes cresça.
 - **Volume da trilha de auditoria.** O gatilho grava `old_data` e `new_data` completos.
   Acima de ~10⁶ eventos, avalie particionamento por mês e política de retenção.
 - **`v_resource_capacity`.** Gera uma série de 7 meses por colaborador. Com centenas de
