@@ -20,7 +20,7 @@ vi.mock('@/lib/supabase/client', () => ({
 }));
 
 const {
-  uploadAttachment, deleteAttachment, getAttachmentDownloadUrl, MAX_ATTACHMENT_SIZE,
+  uploadAttachment, deleteAttachment, getAttachmentDownloadUrl, sanitizeForStorageKey, MAX_ATTACHMENT_SIZE,
 } = await import('../attachments');
 
 function makeFile(name: string, size: number, type: string): File {
@@ -74,6 +74,34 @@ describe('uploadAttachment', () => {
 
     await expect(uploadAttachment({ projectId: 'p1', entity: 'project', file })).rejects.toThrow();
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('sanitiza acento e espaco na chave do storage, mas preserva o nome original no registro', async () => {
+    upload.mockResolvedValueOnce({ error: null });
+    insert.mockResolvedValueOnce({ error: null });
+    const file = makeFile('Ana Lídia Pereira de Souza.pdf', 1024, 'application/pdf');
+
+    await uploadAttachment({ projectId: 'p1', entity: 'task', entityId: 't1', file });
+
+    const [path] = upload.mock.calls[0];
+    expect(path).toMatch(/^p1\/task\/[0-9a-f-]+-Ana_Lidia_Pereira_de_Souza\.pdf$/);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      file_name: 'Ana Lídia Pereira de Souza.pdf',
+    }));
+  });
+});
+
+describe('sanitizeForStorageKey', () => {
+  it('remove acentos e substitui espaco/pontuacao por underscore', () => {
+    expect(sanitizeForStorageKey('Ana Lídia Pereira de Souza.pdf')).toBe('Ana_Lidia_Pereira_de_Souza.pdf');
+  });
+
+  it('mantem nomes ja em ASCII inalterados', () => {
+    expect(sanitizeForStorageKey('relatorio-final_v2.xlsx')).toBe('relatorio-final_v2.xlsx');
+  });
+
+  it('nunca produz string vazia', () => {
+    expect(sanitizeForStorageKey('日本語.pdf')).not.toBe('');
   });
 });
 

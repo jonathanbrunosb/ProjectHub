@@ -26,13 +26,25 @@ export async function listAttachments(
 }
 
 /**
+ * A CHAVE do objeto no Storage so' aceita ASCII sem espaco (o Supabase rejeita
+ * com "Invalid key" nomes com acento ou espaco, ex.: "Ana Lídia Pereira.pdf") -
+ * mas o nome original precisa continuar aparecendo na tela. Por isso o nome
+ * exibido (`file_name`) nunca e' tocado; so' o segmento de caminho e' sanitizado.
+ */
+export function sanitizeForStorageKey(fileName: string): string {
+  const normalized = fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const safe = normalized.replace(/[^a-zA-Z0-9.\-_]+/g, '_');
+  return safe || 'arquivo';
+}
+
+/**
  * Envia o arquivo para o Storage e so' depois cria a linha em `attachments` -
  * se o insert falhar (RLS, rede), o objeto orfao no bucket e' removido para
  * nao acumular lixo sem registro correspondente.
  *
- * Caminho `<project_id>/<entity>/<uuid>-<nome>`: as politicas de storage.objects
- * derivam a autorizacao do primeiro segmento (project_id); o uuid evita colisao
- * de nome sem depender do usuario renomear o arquivo.
+ * Caminho `<project_id>/<entity>/<uuid>-<nome-sanitizado>`: as politicas de
+ * storage.objects derivam a autorizacao do primeiro segmento (project_id); o
+ * uuid evita colisao de nome sem depender do usuario renomear o arquivo.
  */
 export async function uploadAttachment(input: {
   projectId: string; entity: AttachmentEntity; entityId?: string | null; file: File;
@@ -45,7 +57,7 @@ export async function uploadAttachment(input: {
     throw new Error('Tipo de arquivo nao permitido. Use PDF, Office, imagem, CSV ou TXT.');
   }
 
-  const storagePath = `${projectId}/${entity}/${crypto.randomUUID()}-${file.name}`;
+  const storagePath = `${projectId}/${entity}/${crypto.randomUUID()}-${sanitizeForStorageKey(file.name)}`;
   const { error: uploadError } = await supabase.storage.from('project-files').upload(storagePath, file);
   if (uploadError) throw uploadError;
 
