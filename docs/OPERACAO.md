@@ -57,7 +57,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 95 testes de frontend (Vitest + Testing Library)
+npm run test                # 103 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
@@ -77,11 +77,14 @@ janela Relatórios (botão por relatório, permissão, relatório vazio, erro de
 
 ## Edge Functions
 
-`supabase/functions/admin-create-user` é o único ponto da plataforma que usa a
-`service_role` — e ela existe apenas nas variáveis de ambiente da própria função,
-nunca no navegador. Cadastra um usuário (`Configurações → Usuários → Adicionar
-usuário`, restrito a Admin), já com e-mail confirmado, e devolve uma **senha
-temporária** gerada no servidor, exibida uma única vez ao Admin.
+Dois pontos usam `service_role` — e só eles: ela existe apenas nas variáveis de
+ambiente da própria função, nunca no navegador.
+
+### `admin-create-user`
+
+Cadastra um usuário (`Configurações → Usuários → Adicionar usuário`, restrito a
+Admin), já com e-mail confirmado, e devolve uma **senha temporária** gerada no
+servidor, exibida uma única vez ao Admin.
 
 **Por que senha temporária e não convite por e-mail:** o serviço de e-mail nativo
 do Supabase tem limite severo de envio e restrição de destinatário, o que torna o
@@ -89,17 +92,29 @@ cadastro não-determinístico (falhava com HTTP 400 em produção). Criar a cont
 ativa e entregar a credencial ao Admin remove essa dependência. Com SMTP próprio
 configurado, dá para voltar ao `inviteUserByEmail`.
 
-A função valida quem chama antes de usar qualquer privilégio: lê o JWT de quem fez
-a requisição, confirma o papel em `profiles` pela RLS normal (sem elevação), e só
-prossegue com a `service_role` se for `admin`.
+### `admin-reset-password`
 
-**Deploy** (não faz parte do build do GitHub Pages — Edge Functions são publicadas
-direto no Supabase):
+Gera uma nova senha temporária para um usuário **existente** (`Configurações →
+Usuários → Redefinir senha` em cada linha, restrito a Admin), substituindo a
+atual imediatamente.
+
+**Por que existe além da recuperação por e-mail:** a tela de autosserviço
+(`Esqueci minha senha` → código de 6 dígitos) depende do SMTP estar configurado
+e do template de e-mail incluir `{{ .Token }}`. Enquanto isso não está pronto,
+essa é a via confiável para alguém recuperar acesso — mesmo raciocínio que levou
+o cadastro a usar senha temporária em vez de convite por e-mail. Uma vez com SMTP
+próprio configurado, os dois caminhos convivem: autosserviço para o dia a dia,
+Admin como retaguarda.
+
+### Deploy (comum às duas)
+
+Não faz parte do build do GitHub Pages — Edge Functions são publicadas direto no
+Supabase, **em cada projeto** (QA e PRD são bancos separados):
 
 - **Painel do Supabase:** `Edge Functions → Deploy a new function → Via Editor` →
-  nome `admin-create-user` → cole o conteúdo de
-  `supabase/functions/admin-create-user/index.ts` → **Deploy**.
-- **Ou via CLI:** `supabase functions deploy admin-create-user`.
+  nome da função (`admin-create-user` ou `admin-reset-password`) → cole o
+  conteúdo de `supabase/functions/<nome>/index.ts` → **Deploy**.
+- **Ou via CLI:** `supabase functions deploy <nome>`.
 
 O import usa URL (`esm.sh`) em vez do especificador `npm:`: este último depende da
 versão do Edge Runtime e, quando não resolve, derruba a função na carga — e nesse
@@ -124,7 +139,7 @@ Resumo operacional:
 | Migrations `0001` → `0015` | Sim | Sim, as mesmas |
 | `seed.sql` | Sim | **Nunca** (bloqueado por guarda) |
 | `app_environment` | `QA` | `PRD` (definir manualmente após as migrations) |
-| Edge Function `admin-create-user` | Publicada | Publicar |
+| Edge Functions (`admin-create-user`, `admin-reset-password`) | Publicadas | Publicar |
 | Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
