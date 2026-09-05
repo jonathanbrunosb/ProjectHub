@@ -3,6 +3,7 @@ import { listProjectOverview } from '@/services/projects';
 import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listAuditLog } from '@/services/governance';
+import { listAllTaskGoalScores } from '@/services/goalIndicators';
 import { portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboard/selectors';
 import { daysBetween } from '@/utils/format';
 import { auditActionLabel, projectStatusLabel } from '@/utils/domain-labels';
@@ -233,6 +234,59 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
             comprometido: Number(p.committed), forecast: Number(p.forecast),
             saldo: Number(p.remaining), variacao: Number(p.forecast_variance),
             variacaoPct: Number(p.forecast_variance_pct),
+          })),
+        },
+      ];
+    }
+
+    case 'indicador-metas': {
+      const list = await listProjectOverview();
+      const measured = list.filter((p) => p.goal_indicator_enabled);
+      const scores = await listAllTaskGoalScores();
+      return [
+        {
+          name: 'Resumo',
+          columns: [
+            { key: 'indicador', header: 'Indicador', type: 'text' },
+            { key: 'valor', header: 'Valor', type: 'number' },
+          ],
+          rows: [
+            { indicador: 'Projetos mensurados', valor: measured.length },
+            { indicador: 'Projetos com indicador >= Meta (10)', valor: measured.filter((p) => (p.goal_indicator_realized ?? p.goal_indicator_projected ?? 0) >= 10).length },
+            { indicador: 'Entregas pendentes', valor: measured.reduce((s, p) => s + (p.goal_deliveries_pending ?? 0), 0) },
+          ],
+        },
+        {
+          name: 'Projetos',
+          columns: [
+            { key: 'codigo', header: 'Codigo', type: 'text' },
+            { key: 'projeto', header: 'Projeto', type: 'text' },
+            { key: 'owner', header: 'Owner', type: 'text' },
+            { key: 'realizado', header: 'Indicador Realizado', type: 'number' },
+            { key: 'projetado', header: 'Indicador Projetado', type: 'number' },
+            { key: 'pendentes', header: 'Entregas pendentes', type: 'integer' },
+          ],
+          rows: measured.map((p) => ({
+            codigo: p.code, projeto: p.name, owner: p.owner_name ?? '',
+            realizado: p.goal_indicator_realized ?? '', projetado: p.goal_indicator_projected ?? '',
+            pendentes: p.goal_deliveries_pending ?? 0,
+          })),
+        },
+        {
+          name: 'Entregas',
+          columns: [
+            { key: 'codigo', header: 'Codigo', type: 'text' },
+            { key: 'entrega', header: 'Entrega', type: 'text' },
+            { key: 'peso', header: 'Peso (%)', type: 'number' },
+            { key: 'meta', header: 'Data Meta', type: 'date' },
+            { key: 'realizada', header: 'Data Realizada', type: 'date' },
+            { key: 'nota', header: 'Nota', type: 'number' },
+            { key: 'notaProjetada', header: 'Nota Projetada', type: 'number' },
+          ],
+          rows: scores.map((s) => ({
+            codigo: s.code, entrega: s.title, peso: Number(s.weight),
+            meta: s.target_date ?? '', realizada: s.actual_date ?? '',
+            nota: s.score_realized ?? '', notaProjetada: s.score_projected ?? '',
           })),
         },
       ];

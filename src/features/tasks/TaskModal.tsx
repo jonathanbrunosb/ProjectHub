@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
+import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
 import { createTask, deleteTask, nextTaskCode, updateTask, type TaskWithContext } from '@/services/tasks';
 import { listActiveProfiles } from '@/services/projects';
+import { getProjectGoalSettings, listTaskGoalConfigs, upsertTaskGoalConfig } from '@/services/goalIndicators';
 import { priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
 import type { Priority, TaskStatus } from '@/types/domain';
 
@@ -26,13 +28,27 @@ const blank = {
   weight: '1', progress: '0', is_milestone: false, is_critical: false, estimated_hours: '',
 };
 
+const blankGoal = { included: false, goalWeight: '0' };
+
 export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { can } = useAuth();
   const [form, setForm] = useState(blank);
+  const [goalForm, setGoalForm] = useState(blankGoal);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
+  const goalSettings = useQuery({
+    queryKey: ['goal-settings', projectId], queryFn: () => getProjectGoalSettings(projectId), enabled: open,
+  });
+  // Sem `id` ainda (tarefa nova) nao ha como vincular task_goal_config - so'
+  // carrega/oferece o campo ao editar uma tarefa ja existente.
+  const goalConfigs = useQuery({
+    queryKey: ['goal-config', task?.id], queryFn: () => listTaskGoalConfigs([task!.id]), enabled: open && Boolean(task),
+  });
+  const canManageGoal = can('goal_indicator.manage');
+  const showGoalField = Boolean(task) && canManageGoal && goalSettings.data?.enabled;
 
   useEffect(() => {
     if (!open) return;
@@ -54,9 +70,16 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       });
     } else {
       setForm(blank);
+      setGoalForm(blankGoal);
       void nextTaskCode(projectId).then((code) => setForm((f) => ({ ...f, code })));
     }
   }, [open, task, projectId]);
+
+  useEffect(() => {
+    if (!open || !task) return;
+    const cfg = goalConfigs.data?.[0];
+    setGoalForm({ included: cfg?.included ?? false, goalWeight: String(cfg?.weight ?? 0) });
+  }, [open, task, goalConfigs.data]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -88,9 +111,17 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       }
       if (task) await updateTask(task.id, payload);
       else await createTask(payload);
+
+      if (task && showGoalField) {
+        await upsertTaskGoalConfig({
+          task_id: task.id, included: goalForm.included, weight: Number(goalForm.goalWeight) || 0,
+        });
+      }
     },
     onSuccess: () => {
       invalidate();
+      queryClient.invalidateQueries({ queryKey: ['goal-scores'] });
+      queryClient.invalidateQueries({ queryKey: ['goal-indicator'] });
       toast.success(task ? 'Tarefa atualizada' : 'Tarefa criada');
       onClose();
     },
@@ -186,6 +217,29 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
               Critica
             </label>
           </div>
+
+          {showGoalField && (
+            <>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox" className="accent-[rgb(var(--c-brand))]"
+                    checked={goalForm.included}
+                    onChange={(e) => setGoalForm((f) => ({ ...f, included: e.target.checked }))}
+                  />
+                  Compoe Indicador de Meta?
+                </label>
+              </div>
+              {goalForm.included && goalSettings.data?.weight_mode === 'manual' && (
+                <Field label="Peso no indicador (%)">
+                  <Input
+                    type="number" min="0" step="1" value={goalForm.goalWeight}
+                    onChange={(e) => setGoalForm((f) => ({ ...f, goalWeight: e.target.value }))}
+                  />
+                </Field>
+              )}
+            </>
+          )}
         </fieldset>
       </Drawer>
 

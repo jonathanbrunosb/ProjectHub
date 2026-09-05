@@ -16,12 +16,13 @@ export function ReportsPage() {
   const { exportReport, isExporting, isBusy, canExport } = useReportExport();
   const projects = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
 
-  // O relatorio financeiro dedicado so' faz sentido quando existe pelo menos
-  // um projeto usando o modulo - caso contrario seria uma tela vazia.
+  // Relatorios dedicados so' fazem sentido quando existe pelo menos um projeto
+  // usando o respectivo modulo - caso contrario seriam telas vazias.
   const anyFinancial = projects.data?.some((p) => p.financial_effective_enabled) ?? true;
+  const anyGoalIndicator = projects.data?.some((p) => p.goal_indicator_enabled) ?? true;
   const visibleReports = useMemo(
-    () => reports.filter((r) => r.key !== 'financeiro' || anyFinancial),
-    [anyFinancial],
+    () => reports.filter((r) => (r.key !== 'financeiro' || anyFinancial) && (r.key !== 'indicador-metas' || anyGoalIndicator)),
+    [anyFinancial, anyGoalIndicator],
   );
 
   return (

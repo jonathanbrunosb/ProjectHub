@@ -148,6 +148,10 @@ export interface ProjectOverview {
   financial_module_mode: FinancialModuleMode;
   /** Ja calculado no banco: 'enabled'/'disabled' forcam; 'inherit' consulta o global. */
   financial_effective_enabled: boolean;
+  goal_indicator_enabled: boolean;
+  goal_indicator_realized: number | null;
+  goal_indicator_projected: number | null;
+  goal_deliveries_pending: number | null;
   critical_risks: number;
   open_risks: number;
   overdue_tasks: number;
@@ -339,4 +343,87 @@ export interface Notification {
 /** Configuracao global da plataforma (linha unica). */
 export interface SystemSettings {
   financial_module_enabled: boolean;
+}
+
+// --- Indicadores de Metas (nota de aderencia a prazo das entregas) ---------
+
+export type GoalDayBasis = 'uteis' | 'corridos';
+export type GoalWeightMode = 'igual' | 'manual';
+export type GoalPeriodStatus = 'em_apuracao' | 'fechado';
+
+export interface Holiday { id: string; date: string; name: string; active: boolean }
+
+export interface ProjectGoalSettings {
+  project_id: string;
+  enabled: boolean;
+  day_basis: GoalDayBasis;
+  challenge_days: number;
+  minimum_days: number;
+  challenge_score: number;
+  target_score: number;
+  minimum_score: number;
+  weight_mode: GoalWeightMode;
+}
+
+export interface TaskGoalConfig {
+  task_id: string;
+  included: boolean;
+  weight: number;
+  baseline_date: string | null;
+  challenge_days_override: number | null;
+  minimum_days_override: number | null;
+  override_score: number | null;
+  override_reason: string | null;
+  override_by: string | null;
+  override_at: string | null;
+}
+
+/** Linha da view v_task_goal_scores: nota realizada e projetada por entrega. */
+export interface TaskGoalScore {
+  task_id: string;
+  project_id: string;
+  code: string;
+  title: string;
+  phase_id: string | null;
+  assignee_id: string | null;
+  weight: number;
+  target_date: string | null;
+  current_due_date: string | null;
+  baseline_frozen: boolean;
+  actual_date: string | null;
+  challenge_days: number;
+  minimum_days: number;
+  day_basis: GoalDayBasis;
+  challenge_score: number;
+  target_score: number;
+  minimum_score: number;
+  override_score: number | null;
+  override_reason: string | null;
+  is_override: boolean;
+  score_realized: number | null;
+  score_projected: number | null;
+}
+
+/** Linha da view v_project_goal_indicator: media ponderada por projeto. */
+export interface ProjectGoalIndicator {
+  project_id: string;
+  deliveries_total: number;
+  deliveries_done: number;
+  deliveries_pending: number;
+  weight_done_sum: number | null;
+  weight_total_sum: number | null;
+  indicator_realized: number | null;
+  indicator_projected: number | null;
+}
+
+export interface GoalScorePeriod {
+  id: string;
+  project_id: string;
+  competencia: string;
+  status: GoalPeriodStatus;
+  indicator_realized: number | null;
+  indicator_projected: number | null;
+  closed_at: string | null;
+  reopened_at: string | null;
+  reopen_reason: string | null;
 }

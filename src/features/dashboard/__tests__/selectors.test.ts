@@ -17,6 +17,8 @@ function project(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     budget: 100_000, actual: 40_000, committed: 10_000, forecast: 100_000, remaining: 50_000,
     forecast_variance: 0, forecast_variance_pct: 0,
     financial_module_mode: 'inherit', financial_effective_enabled: true,
+    goal_indicator_enabled: false, goal_indicator_realized: null, goal_indicator_projected: null,
+    goal_deliveries_pending: null,
     critical_risks: 0, open_risks: 0, overdue_tasks: 0, open_tasks: 0, overdue_actions: 0,
     pending_decisions: 0, next_milestone_name: null, next_milestone_date: null,
     last_update_at: '2026-06-01T10:00:00Z', archived_at: null,

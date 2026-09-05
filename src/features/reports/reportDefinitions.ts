@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  FileBarChart, ShieldAlert, Wallet, Users, Clock, Gavel, History, Presentation, LayoutDashboard,
+  FileBarChart, ShieldAlert, Wallet, Users, Clock, Gavel, History, Presentation, LayoutDashboard, Target,
 } from 'lucide-react';
 
 export interface ReportDefinition {
@@ -47,6 +47,13 @@ export const reports: ReportDefinition[] = [
     description: 'Budget, realizado, comprometido, forecast e variacao por projeto e consolidado.',
     icon: Wallet,
     audience: 'Controladoria e Gerencia',
+  },
+  {
+    key: 'indicador-metas',
+    title: 'Indicadores de Metas',
+    description: 'Nota de aderencia a prazo (1 a 15) por entrega e por projeto, realizada e projetada.',
+    icon: Target,
+    audience: 'PMO, Gerencia e Project Owners',
   },
   {
     key: 'capacidade',

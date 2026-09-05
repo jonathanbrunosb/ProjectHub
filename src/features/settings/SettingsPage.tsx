@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet,
+  Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet, CalendarDays,
 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -25,9 +25,11 @@ import {
   listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
 } from '@/services/projects';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
+import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
 import { financialModeLabel, roleDescription, roleLabel } from '@/utils/domain-labels';
+import { formatDate } from '@/utils/format';
 import type {
   CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
 } from '@/types/domain';
@@ -991,8 +993,11 @@ function ModulosTab() {
 }
 
 function SystemTab() {
+  const { can } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const canManageHolidays = can('portfolio.manage');
+  const [newHoliday, setNewHoliday] = useState({ date: '', name: '' });
 
   const refresh = useMutation({
     mutationFn: refreshAllHealth,
@@ -1001,6 +1006,30 @@ function SystemTab() {
       toast.success('Saude recalculada', `${count} projeto(s) reavaliado(s) pelas regras automaticas.`);
     },
     onError: (e) => toast.error('Nao foi possivel recalcular', describeError(e)),
+  });
+
+  const holidays = useQuery({ queryKey: ['holidays'], queryFn: listHolidays });
+
+  const addHoliday = useMutation({
+    mutationFn: () => {
+      if (!newHoliday.date || !newHoliday.name.trim()) throw new Error('Informe data e nome do feriado.');
+      return createHoliday({ date: newHoliday.date, name: newHoliday.name.trim() });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['holidays'] });
+      setNewHoliday({ date: '', name: '' });
+      toast.success('Feriado cadastrado');
+    },
+    onError: (e) => toast.error('Nao foi possivel cadastrar', describeError(e)),
+  });
+
+  const removeHoliday = useMutation({
+    mutationFn: (id: string) => deleteHoliday(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['holidays'] });
+      toast.success('Feriado removido');
+    },
+    onError: (e) => toast.error('Nao foi possivel remover', describeError(e)),
   });
 
   return (
@@ -1017,6 +1046,43 @@ function SystemTab() {
       </section>
 
       <section className="card p-4">
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4" /> Feriados corporativos</h2>
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          Usado pelo Indicador de Metas quando a base de calculo e &quot;Dias uteis&quot; - finais de semana
+          ja sao considerados automaticamente, so os feriados precisam ser cadastrados aqui.
+        </p>
+        {canManageHolidays && (
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <Field label="Data" className="w-auto">
+              <Input type="date" value={newHoliday.date} onChange={(e) => setNewHoliday((f) => ({ ...f, date: e.target.value }))} />
+            </Field>
+            <Field label="Nome" className="min-w-[160px] flex-1">
+              <Input value={newHoliday.name} onChange={(e) => setNewHoliday((f) => ({ ...f, name: e.target.value }))} placeholder="Ex.: Natal" />
+            </Field>
+            <Button size="sm" onClick={() => addHoliday.mutate()} loading={addHoliday.isPending} icon={<Plus className="h-3.5 w-3.5" />}>
+              Adicionar
+            </Button>
+          </div>
+        )}
+        {(holidays.data ?? []).length === 0 ? (
+          <p className="text-xs text-muted">Nenhum feriado cadastrado.</p>
+        ) : (
+          <ul className="max-h-56 divide-y divide-border overflow-y-auto text-sm">
+            {(holidays.data ?? []).map((h) => (
+              <li key={h.id} className="flex items-center justify-between gap-2 py-1.5">
+                <span>{formatDate(h.date)} · {h.name}</span>
+                {canManageHolidays && (
+                  <button onClick={() => removeHoliday.mutate(h.id)} className="rounded p-1 text-muted hover:text-danger" aria-label="Remover">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card p-4 lg:col-span-2">
         <h2 className="mb-2 text-sm font-semibold">Seguranca</h2>
         <ul className="space-y-2 text-xs leading-relaxed text-muted">
           <li className="flex gap-2"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" />
