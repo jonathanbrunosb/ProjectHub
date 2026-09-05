@@ -427,3 +427,20 @@ export interface GoalScorePeriod {
   reopened_at: string | null;
   reopen_reason: string | null;
 }
+
+// --- Anexos ------------------------------------------------------------------
+
+export type AttachmentEntity = 'project' | 'task' | 'risk' | 'action_plan' | 'decision' | 'status_report';
+
+export interface Attachment {
+  id: string;
+  project_id: string;
+  entity: AttachmentEntity;
+  entity_id: string | null;
+  file_name: string;
+  storage_path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
+  created_by: string | null;
+}
