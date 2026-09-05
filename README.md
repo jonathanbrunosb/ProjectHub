@@ -1,8 +1,9 @@
-# PMO Contábil
+# ProjectHub
 
-Plataforma corporativa de **gestão de portfólio de projetos (PPM)** construída para a
-Contabilidade: planejamento, execução, custos, recursos, riscos, entregas, indicadores
-e governança de múltiplos projetos simultâneos, em uma única fonte de verdade.
+**Gestão Integrada de Projetos.** Plataforma corporativa de **gestão de portfólio de
+projetos (PPM)** construída para a Contabilidade: planejamento, execução, custos,
+recursos, riscos, entregas, indicadores e governança de múltiplos projetos simultâneos,
+em uma única fonte de verdade.
 
 Substitui o controle disperso em planilhas, e-mails e apresentações por uma base
 transacional com **controle de acesso no banco (RLS)**, **trilha de auditoria imutável**

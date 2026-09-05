@@ -5,6 +5,7 @@ import { navigation } from './navigation';
 import { useAuth } from '@/app/AuthProvider';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { EnvironmentSwitcher } from './EnvironmentSwitcher';
+import { GroupLogo, ProductLockup } from './BrandMark';
 
 export function Sidebar({
   collapsed, onToggle, mobileOpen, onCloseMobile,
@@ -23,15 +24,16 @@ export function Sidebar({
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
       >
-        <div className={cn('flex h-14 items-center gap-2 border-b border-white/10 px-3', collapsed && 'justify-center px-0')}>
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-brand-fg">
-            <LineChart className="h-4 w-4" />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold leading-tight">PMO Contábil</p>
-              <p className="truncate text-[10px] text-nav-muted">Gestao de Portfolio</p>
+        <div className={cn('flex h-14 items-center gap-2.5 border-b border-white/10 px-3', collapsed && 'justify-center px-0')}>
+          {collapsed ? (
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-brand-fg">
+              <LineChart className="h-4 w-4" />
             </div>
+          ) : (
+            <>
+              <GroupLogo className="h-6 max-w-[88px] shrink-0" textSize="text-[9px]" />
+              <ProductLockup size="sm" className="min-w-0 flex-1" />
+            </>
           )}
         </div>
 

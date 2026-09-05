@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { LineChart, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/app/AuthProvider';
 import { Button } from '@/components/ui/Button';
-import { Field, Input } from '@/components/ui/Input';
+import { Field, Input, PasswordInput } from '@/components/ui/Input';
+import { BrandHeader, BrandLockupCompact } from '@/components/layout/BrandMark';
 import { describeError } from '@/lib/supabase/client';
 
 /**
@@ -81,16 +82,8 @@ export function SignupPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-nav p-10 text-nav-fg lg:flex">
-        <div className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-brand-fg">
-            <LineChart className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-semibold">PMO Contábil</p>
-            <p className="text-xs text-nav-muted">Gestao de Portfolio da Contabilidade</p>
-          </div>
-        </div>
+      <div className="hidden flex-col justify-between bg-nav p-8 text-nav-fg lg:flex xl:p-12">
+        <BrandHeader />
         <div className="max-w-md">
           <h1 className="text-2xl font-semibold leading-snug text-white">
             Crie sua conta para acessar o portfolio.
@@ -107,13 +100,10 @@ export function SignupPage() {
         </p>
       </div>
 
-      <div className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm">
+      <div className="flex items-center justify-center px-6 py-10 sm:py-12">
+        <div className="w-full" style={{ maxWidth: 'min(100%, 480px)' }}>
           <div className="mb-8 lg:hidden">
-            <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-brand text-brand-fg">
-              <LineChart className="h-5 w-5" />
-            </div>
-            <p className="text-lg font-semibold">PMO Contábil</p>
+            <BrandLockupCompact />
           </div>
 
           <h2 className="text-xl font-semibold tracking-tight">Criar conta</h2>
@@ -140,8 +130,7 @@ export function SignupPage() {
               />
             </Field>
             <Field label="Senha" required hint="Minimo de 8 caracteres.">
-              <Input
-                type="password"
+              <PasswordInput
                 autoComplete="new-password"
                 required
                 minLength={8}
@@ -151,8 +140,7 @@ export function SignupPage() {
               />
             </Field>
             <Field label="Confirmar senha" required>
-              <Input
-                type="password"
+              <PasswordInput
                 autoComplete="new-password"
                 required
                 value={confirmPassword}

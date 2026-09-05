@@ -1,4 +1,5 @@
-import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useState, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes, type ReactNode } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 const base =
@@ -29,6 +30,38 @@ export function Field({
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(
   function Input({ className, invalid, ...props }, ref) {
     return <input ref={ref} className={cn(base, invalid && 'border-danger', className)} {...props} />;
+  },
+);
+
+/**
+ * Campo de senha com alternancia visualizar/ocultar. A troca e' puramente
+ * visual (type="password" <-> type="text" no input local): o valor digitado
+ * nunca e' alterado, registrado em console ou persistido - apenas o atributo
+ * `type` do <input> muda, sem tocar em nenhum comportamento do Supabase Auth.
+ */
+export const PasswordInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(
+  function PasswordInput({ className, invalid, ...props }, ref) {
+    const [visible, setVisible] = useState(false);
+    return (
+      <div className="relative">
+        <input
+          ref={ref}
+          type={visible ? 'text' : 'password'}
+          className={cn(base, 'pr-10', invalid && 'border-danger', className)}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? 'Ocultar senha' : 'Visualizar senha'}
+          title={visible ? 'Ocultar senha' : 'Visualizar senha'}
+          tabIndex={0}
+          className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted transition-colors hover:text-fg focus-ring rounded-r-lg"
+        >
+          {visible ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+        </button>
+      </div>
+    );
   },
 );
 
