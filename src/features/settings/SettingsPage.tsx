@@ -20,7 +20,7 @@ import {
 } from '@/services/customFields';
 import { listCompanies, listProfiles, listTeams, listTemplates } from '@/services/projects';
 import { refreshAllHealth } from '@/services/governance';
-import { inviteUser } from '@/services/adminUsers';
+import { createUser, type CreateUserResult } from '@/services/adminUsers';
 import { roleDescription, roleLabel } from '@/utils/domain-labels';
 import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, RoleKey } from '@/types/domain';
 
@@ -131,7 +131,7 @@ function ProfileTab() {
 }
 
 // ---------------------------------------------------------------------------
-const blankInvite = {
+const blankNewUser = {
   full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '',
 };
 
@@ -141,7 +141,9 @@ function UsersTab() {
   const queryClient = useQueryClient();
   const { data = [], isLoading } = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles });
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState(blankInvite);
+  const [inviteForm, setInviteForm] = useState(blankNewUser);
+  // Credencial exibida uma unica vez apos o cadastro - nao fica armazenada.
+  const [createdUser, setCreatedUser] = useState<CreateUserResult | null>(null);
 
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen });
@@ -163,7 +165,7 @@ function UsersTab() {
       if (!inviteForm.full_name.trim() || !inviteForm.email.trim()) {
         throw new Error('Informe nome e e-mail.');
       }
-      return inviteUser({
+      return createUser({
         email: inviteForm.email.trim(),
         full_name: inviteForm.full_name.trim(),
         role: inviteForm.role,
@@ -172,11 +174,11 @@ function UsersTab() {
         primary_team_id: inviteForm.primary_team_id || null,
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      toast.success('Convite enviado', `${inviteForm.full_name} recebera um e-mail para definir a senha.`);
       setInviteOpen(false);
-      setInviteForm(blankInvite);
+      setInviteForm(blankNewUser);
+      setCreatedUser(result);
     },
     onError: (e) => toast.error('Nao foi possivel cadastrar o usuario', describeError(e)),
   });
@@ -246,11 +248,11 @@ function UsersTab() {
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
         title="Adicionar usuário"
-        description="A pessoa recebe um e-mail com um link para definir a propria senha. O papel de acesso ja sai definido conforme escolhido aqui."
+        description="A conta e criada ja ativa, com uma senha temporaria exibida ao final para voce repassar a pessoa. O papel de acesso sai definido conforme escolhido aqui."
         footer={
           <>
             <Button variant="secondary" onClick={() => setInviteOpen(false)}>Cancelar</Button>
-            <Button onClick={() => invite.mutate()} loading={invite.isPending}>Enviar convite</Button>
+            <Button onClick={() => invite.mutate()} loading={invite.isPending}>Cadastrar</Button>
           </>
         }
       >
@@ -282,6 +284,43 @@ function UsersTab() {
             </Select>
           </Field>
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(createdUser)}
+        onClose={() => setCreatedUser(null)}
+        title="Usuário cadastrado"
+        description="Repasse a credencial abaixo. Ela nao fica armazenada e nao sera exibida novamente."
+        size="sm"
+        footer={<Button onClick={() => setCreatedUser(null)}>Concluir</Button>}
+      >
+        {createdUser && (
+          <div className="space-y-3">
+            <Field label="E-mail">
+              <Input readOnly value={createdUser.email} onFocus={(e) => e.target.select()} />
+            </Field>
+            <Field label="Senha temporaria">
+              <Input readOnly value={createdUser.temporary_password} className="font-mono" onFocus={(e) => e.target.select()} />
+            </Field>
+            <Button
+              variant="secondary"
+              className="w-full justify-center"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(`E-mail: ${createdUser.email}\nSenha temporaria: ${createdUser.temporary_password}`)
+                  .then(() => toast.success('Credencial copiada'))
+                  .catch(() => toast.error('Nao foi possivel copiar', 'Selecione e copie manualmente.'));
+              }}
+            >
+              Copiar e-mail e senha
+            </Button>
+            <p className="rounded-lg bg-surface-2 p-3 text-xs text-muted">
+              Oriente a pessoa a trocar a senha no primeiro acesso. Enquanto nao houver vinculo a
+              projetos, ela entra mas nao enxerga nenhum projeto - o vinculo e feito na aba
+              <b> Recursos</b> de cada projeto.
+            </p>
+          </div>
+        )}
       </Modal>
     </>
   );

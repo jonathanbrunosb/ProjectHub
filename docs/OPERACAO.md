@@ -57,11 +57,17 @@ clique na linha, estado vazio).
 
 ## Edge Functions
 
-`supabase/functions/admin-invite-user` é o único ponto da plataforma que usa a
+`supabase/functions/admin-create-user` é o único ponto da plataforma que usa a
 `service_role` — e ela existe apenas nas variáveis de ambiente da própria função,
 nunca no navegador. Cadastra um usuário (`Configurações → Usuários → Adicionar
-usuário`, restrito a Admin) e envia um convite por e-mail para a pessoa definir a
-própria senha.
+usuário`, restrito a Admin), já com e-mail confirmado, e devolve uma **senha
+temporária** gerada no servidor, exibida uma única vez ao Admin.
+
+**Por que senha temporária e não convite por e-mail:** o serviço de e-mail nativo
+do Supabase tem limite severo de envio e restrição de destinatário, o que torna o
+cadastro não-determinístico (falhava com HTTP 400 em produção). Criar a conta já
+ativa e entregar a credencial ao Admin remove essa dependência. Com SMTP próprio
+configurado, dá para voltar ao `inviteUserByEmail`.
 
 A função valida quem chama antes de usar qualquer privilégio: lê o JWT de quem fez
 a requisição, confirma o papel em `profiles` pela RLS normal (sem elevação), e só
@@ -70,10 +76,15 @@ prossegue com a `service_role` se for `admin`.
 **Deploy** (não faz parte do build do GitHub Pages — Edge Functions são publicadas
 direto no Supabase):
 
-- **Painel do Supabase:** `Edge Functions → Create a new function` → nome
-  `admin-invite-user` → cole o conteúdo de `supabase/functions/admin-invite-user/index.ts`
-  → **Deploy**.
-- **Ou via CLI:** `supabase functions deploy admin-invite-user`.
+- **Painel do Supabase:** `Edge Functions → Deploy a new function → Via Editor` →
+  nome `admin-create-user` → cole o conteúdo de
+  `supabase/functions/admin-create-user/index.ts` → **Deploy**.
+- **Ou via CLI:** `supabase functions deploy admin-create-user`.
+
+O import usa URL (`esm.sh`) em vez do especificador `npm:`: este último depende da
+versão do Edge Runtime e, quando não resolve, derruba a função na carga — e nesse
+caso a plataforma responde 500 **sem cabeçalho CORS**, fazendo o navegador reportar
+um erro de CORS que mascara a causa real.
 
 Não é preciso configurar nenhuma variável nova: `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` e `SUPABASE_ANON_KEY` já existem automaticamente no
@@ -99,10 +110,11 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Pendência | Situação | Caminho |
 |---|---|---|
 | Upload de anexos pela interface | Bucket, políticas e tabela `attachments` prontos | Componente de upload + URL assinada |
-| Edge Functions de integração | `admin-invite-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
+| Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Agendamento do motor de alertas | Execução manual | Supabase Cron |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
+| SMTP próprio | Não configurado (usa o e-mail nativo do Supabase, limitado) | Configurar em `Authentication → SMTP Settings` para habilitar convite por e-mail e recuperação de senha confiáveis |
 | Comentários por entidade | Tabela e RLS prontas | Componente de thread |
 | EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
 | Edição de dependências pela interface | Tabela e visualização no Gantt prontas | Editor de predecessora/sucessora |
