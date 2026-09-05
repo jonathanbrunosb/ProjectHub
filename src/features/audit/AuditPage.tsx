@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Download, ShieldCheck } from 'lucide-react';
+import { FileSpreadsheet, ShieldCheck } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { DataTable, exportRowsToCsv } from '@/components/ui/DataTable';
+import { DataTable, exportRowsToXlsx } from '@/components/ui/DataTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Input';
@@ -14,6 +14,7 @@ import { useTableState } from '@/hooks/useTableState';
 import { useToast } from '@/components/ui/Toast';
 import { logAppEvent } from '@/lib/supabase/audit';
 import { useEnvironment } from '@/app/EnvironmentProvider';
+import { useAuth } from '@/app/AuthProvider';
 import { listAuditLog } from '@/services/governance';
 import { listProfiles, listProjectOverview } from '@/services/projects';
 import { formatDateTime } from '@/utils/format';
@@ -29,6 +30,8 @@ export function AuditPage() {
   const toast = useToast();
   const { environment } = useEnvironment();
   const table = useTableState('audit');
+  const { profile } = useAuth();
+  const [exporting, setExporting] = useState(false);
   const [detail, setDetail] = useState<AuditLogEntry | null>(null);
   const [filters, setFilters] = useState({ userId: '', projectId: '', entity: '', action: '', from: '', to: '' });
 
@@ -49,7 +52,7 @@ export function AuditPage() {
   });
 
   const columns = useMemo<ColumnDef<AuditLogEntry, unknown>[]>(() => [
-    { accessorKey: 'occurred_at', header: 'Data/hora (UTC)', meta: { label: 'Data/hora' }, size: 160,
+    { accessorKey: 'occurred_at', header: 'Data/hora (UTC)', meta: { label: 'Data/hora', exportType: 'datetime' }, size: 160,
       cell: ({ getValue }) => <span className="tabular-nums text-xs">{formatDateTime(getValue() as string)}</span> },
     { accessorKey: 'user_name', header: 'Usuario', meta: { label: 'Usuario' }, size: 160,
       cell: ({ row }) => (
@@ -73,9 +76,26 @@ export function AuditPage() {
   ], []);
 
   const handleExport = async () => {
-    exportRowsToCsv(data, columns, 'trilha-auditoria', environment);
-    await logAppEvent('export', 'application_audit_log', { data: { rows: data.length, filters, environment } });
-    toast.success('Exportacao registrada', 'O evento de exportacao foi gravado na propria trilha.');
+    setExporting(true);
+    try {
+      await exportRowsToXlsx(data, columns, 'trilha-auditoria', {
+        environment,
+        title: 'Auditoria',
+        userEmail: profile?.email,
+        filters: exportedFilters(filters),
+      });
+      await logAppEvent('export', 'application_audit_log', {
+        data: { rows: data.length, format: 'XLSX', filters, environment },
+      });
+      toast.success('Exportacao registrada', 'O evento de exportacao foi gravado na propria trilha.');
+    } catch (err) {
+      toast.error(
+        'Nao foi possivel gerar o arquivo Excel',
+        err instanceof Error ? err.message : 'Tente novamente.',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (isError) return <ErrorState message={(error as Error).message} onRetry={() => refetch()} />;
@@ -86,8 +106,14 @@ export function AuditPage() {
         title="Trilha de Auditoria"
         description="Registro imutavel de operacoes criticas. Alteracoes de dados sao capturadas por gatilho no banco; login, logout e exportacao carregam contexto de sessao."
         actions={
-          <Button variant="secondary" onClick={handleExport} icon={<Download className="h-4 w-4" />}>
-            Exportar
+          <Button
+            variant="secondary"
+            onClick={() => void handleExport()}
+            loading={exporting}
+            disabled={exporting}
+            icon={<FileSpreadsheet className="h-4 w-4" />}
+          >
+            {exporting ? 'Gerando Excel...' : 'Exportar Excel'}
           </Button>
         }
       />
@@ -215,4 +241,17 @@ function renderValue(value: unknown): string {
   if (value == null) return '—';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+/** Rotula os filtros ativos para a aba de informacoes da planilha. */
+function exportedFilters(filters: Record<string, string>): Record<string, string> {
+  const labels: Record<string, string> = {
+    userId: 'Usuario', projectId: 'Projeto', entity: 'Entidade',
+    action: 'Acao', from: 'De', to: 'Ate',
+  };
+  return Object.fromEntries(
+    Object.entries(filters)
+      .filter(([, v]) => v !== '')
+      .map(([k, v]) => [labels[k] ?? k, v]),
+  );
 }

@@ -57,7 +57,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 42 testes de frontend (Vitest + Testing Library)
+npm run test                # 73 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
@@ -70,8 +70,10 @@ de autoconcessão de `can_switch_environment`, registro das trocas concedidas e 
 
 Cobertura do frontend: consolidação de KPIs do portfólio, distribuições, curva financeira,
 capacidade por equipe, formatação e fuso de datas, mapeamento tipado de campos
-personalizados e comportamento da `DataTable` (busca, ocultar coluna, estado controlado,
-clique na linha, estado vazio).
+personalizados, comportamento da `DataTable` (busca, ocultar coluna, estado controlado,
+clique na linha, estado vazio), geração de XLSX (tipos preservados, freeze, filtro
+automático, nome de aba e de arquivo, aviso de QA, workbook multi-aba, arquivo válido) e a
+janela Relatórios (botão por relatório, permissão, relatório vazio, erro de geração).
 
 ## Edge Functions
 
@@ -127,6 +129,42 @@ Resumo operacional:
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
 não basta salvar no GitHub.
+
+## Exportação de dados
+
+Toda exportação tabular gera **Excel (.xlsx)**. O CSV foi removido: para análise
+contábil o arquivo precisa chegar com moeda somável, percentual calculável e data
+reconhecida como data — em CSV tudo isso vira texto e o analista refaz o trabalho na mão.
+
+**Onde exportar:**
+
+| Origem | O que sai |
+|---|---|
+| Qualquer tabela (`DataTable`) | Uma aba com as **colunas visíveis, na ordem da tela**, e apenas as **linhas filtradas** |
+| Janela Relatórios (9 relatórios) | Workbook com uma aba por seção — botão `Excel` no card e na página do relatório |
+| Trilha de auditoria | Uma aba, respeitando os filtros de usuário, projeto, entidade, ação e período |
+
+**Formatação aplicada** (`src/lib/export/xlsx.ts`): cabeçalho em negrito sobre fundo
+corporativo, primeira linha congelada, filtro automático, largura de coluna calculada
+pelo conteúdo (entre 10 e 46), e formato por tipo — `R$ #,##0.00`, `0.0%`, `dd/mm/yyyy`,
+`dd/mm/yyyy hh:mm`, `#,##0`.
+
+**Percentual é gravado como fração** (78,4% → `0,784` com formato `0.0%`): é a
+representação nativa do Excel, a única em que média e soma percentual saem corretas.
+
+**Biblioteca: ExcelJS, não SheetJS.** A versão community do `xlsx` não aplica estilos —
+negrito, largura e formato de número são recursos da versão paga. Com ela o arquivo seria
+um CSV com outra extensão. O ExcelJS é carregado sob demanda (`await import`), em chunk
+próprio de ~271 kB gzip: quem nunca exporta não paga esse custo no carregamento.
+
+> O `package.json` fixa `overrides.uuid` para manter o `npm audit` limpo. O ExcelJS traz
+> `uuid@8` transitivamente, cuja vulnerabilidade conhecida afeta apenas `v3/v5/v6` com o
+> parâmetro `buf` — o ExcelJS usa só `v4()`, então não era alcançável; o override existe
+> para não deixar ruído em auditoria de dependências.
+
+**Volume:** a geração é client-side. Os relatórios atuais operam em centenas de linhas.
+Acima de ~10 mil registros, avalie mover a geração para uma Edge Function antes que o
+navegador do usuário vire o gargalo.
 
 ## Automações e alertas
 

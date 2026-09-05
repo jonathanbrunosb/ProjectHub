@@ -108,14 +108,19 @@ em operação rotineira: aviso em tudo vira ruído e o usuário passa a clicar s
 
 ## Exportações e relatórios
 
-Toda exportação carimba o ambiente:
+Toda exportação carimba o ambiente em três lugares:
 
-- **Nome do arquivo:** `portfolio-projetos_PRODUCAO_2026-09-05.csv` /
-  `..._QA-TESTES_...`
-- **Conteúdo:** relatórios exportados ganham a coluna `Ambiente`.
-- **Auditoria:** o evento `export` grava o ambiente no payload.
+- **Nome do arquivo:** `portfolio_de_projetos_PRD_2026-09-05.xlsx` / `..._QA_...`
+- **Dentro da planilha:** a aba `Informacoes` traz ambiente, data de geração, usuário,
+  filtros aplicados e contagem de registros. Em QA, um aviso em destaque: *"dados de QA
+  (ambiente de testes). Não utilizar como informação oficial."*
+- **Auditoria:** o evento `export` grava ambiente, formato e volume no payload.
 
-Assim uma planilha que circula por e-mail não pode ser confundida com dado oficial.
+Assim uma planilha que circula por e-mail não pode ser confundida com dado oficial — e
+quem a recebe descobre a origem abrindo o próprio arquivo, sem depender do nome.
+
+Não existe risco de mistura entre ambientes: a segregação é física (dois projetos
+Supabase), então a exportação lê apenas a base do ambiente ativo.
 
 ## Guarda contra configuração errada
 
