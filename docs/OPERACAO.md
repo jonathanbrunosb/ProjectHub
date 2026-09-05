@@ -57,7 +57,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 103 testes de frontend (Vitest + Testing Library)
+npm run test                # 112 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
@@ -77,7 +77,7 @@ janela Relatórios (botão por relatório, permissão, relatório vazio, erro de
 
 ## Edge Functions
 
-Dois pontos usam `service_role` — e só eles: ela existe apenas nas variáveis de
+Tres pontos usam `service_role` — e só eles: ela existe apenas nas variáveis de
 ambiente da própria função, nunca no navegador.
 
 ### `admin-create-user`
@@ -106,14 +106,37 @@ o cadastro a usar senha temporária em vez de convite por e-mail. Uma vez com SM
 próprio configurado, os dois caminhos convivem: autosserviço para o dia a dia,
 Admin como retaguarda.
 
-### Deploy (comum às duas)
+### `admin-delete-user`
+
+Exclui a conta **permanentemente** (`Configurações → Usuários → Excluir`, restrito
+a Admin, com confirmação exigindo digitar o e-mail exato).
+
+`profiles.id` referencia `auth.users(id) on delete cascade`: excluir só pela
+tabela `profiles` deixaria uma conta de auth órfã, que continuaria autenticando
+sem enxergar nada — pior que o estado atual. Por isso a exclusão real só existe
+via Admin API (`auth.admin.deleteUser`), que remove os dois de uma vez.
+
+**Consequência nos vínculos:** a maioria das referências a um usuário
+(responsável por projeto, tarefa, risco, decisão) é `on delete set null` — o
+registro permanece, só fica sem responsável. Um grupo menor é `on delete
+cascade` (vínculos de equipe, aprovações, visualizações salvas, preferências de
+coluna). `approvals` tem gatilho de auditoria: o `DELETE` grava `old_data` em
+`application_audit_log` antes da linha sumir, então o fato histórico sobrevive
+mesmo que a linha viva seja removida.
+
+**Guardas:** a função nunca deixa a plataforma sem nenhum Admin ativo, e nunca
+permite que alguém exclua a própria conta — os dois casos travam a gestão de
+usuários sem ninguém para reverter.
+
+### Deploy (comum às três)
 
 Não faz parte do build do GitHub Pages — Edge Functions são publicadas direto no
 Supabase, **em cada projeto** (QA e PRD são bancos separados):
 
 - **Painel do Supabase:** `Edge Functions → Deploy a new function → Via Editor` →
-  nome da função (`admin-create-user` ou `admin-reset-password`) → cole o
-  conteúdo de `supabase/functions/<nome>/index.ts` → **Deploy**.
+  nome da função (`admin-create-user`, `admin-reset-password` ou
+  `admin-delete-user`) → cole o conteúdo de `supabase/functions/<nome>/index.ts`
+  → **Deploy**.
 - **Ou via CLI:** `supabase functions deploy <nome>`.
 
 O import usa URL (`esm.sh`) em vez do especificador `npm:`: este último depende da
@@ -139,7 +162,7 @@ Resumo operacional:
 | Migrations `0001` → `0015` | Sim | Sim, as mesmas |
 | `seed.sql` | Sim | **Nunca** (bloqueado por guarda) |
 | `app_environment` | `QA` | `PRD` (definir manualmente após as migrations) |
-| Edge Functions (`admin-create-user`, `admin-reset-password`) | Publicadas | Publicar |
+| Edge Functions (`admin-create-user`, `admin-reset-password`, `admin-delete-user`) | Publicadas | Publicar |
 | Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, RefreshCw, ShieldCheck, KeyRound } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs } from '@/components/ui/Tabs';
@@ -20,9 +20,9 @@ import {
 } from '@/services/customFields';
 import { listCompanies, listProfiles, listTeams, listTemplates } from '@/services/projects';
 import { refreshAllHealth } from '@/services/governance';
-import { createUser, resetUserPassword, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
+import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
 import { roleDescription, roleLabel } from '@/utils/domain-labels';
-import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, RoleKey } from '@/types/domain';
+import type { CustomFieldDefinition, CustomFieldScope, CustomFieldType, Profile, RoleKey } from '@/types/domain';
 
 const TABS = [
   { key: 'perfil', label: 'Meu perfil' },
@@ -135,6 +135,10 @@ const blankNewUser = {
   full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '',
 };
 
+const blankEditForm = {
+  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40,
+};
+
 function UsersTab() {
   const { can, profile } = useAuth();
   const toast = useToast();
@@ -146,9 +150,13 @@ function UsersTab() {
   const [createdUser, setCreatedUser] = useState<CreateUserResult | null>(null);
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
   const [resetResult, setResetResult] = useState<ResetPasswordResult | null>(null);
+  const [editTarget, setEditTarget] = useState<Profile | null>(null);
+  const [editForm, setEditForm] = useState(blankEditForm);
+  const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string; active: boolean } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; email: string } | null>(null);
 
-  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen });
-  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen });
+  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen || Boolean(editTarget) });
+  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen || Boolean(editTarget) });
 
   const changeEnvironmentAccess = useMutation({
     mutationFn: async ({ id, allowed }: { id: string; allowed: boolean }) => {
@@ -206,6 +214,60 @@ function UsersTab() {
     },
     onError: (e) => toast.error('Nao foi possivel redefinir a senha', describeError(e)),
   });
+
+  const editUser = useMutation({
+    mutationFn: async () => {
+      if (!editTarget) return;
+      const { error } = await supabase.from('profiles').update({
+        full_name: editForm.full_name.trim(),
+        job_title: editForm.job_title || null,
+        company_id: editForm.company_id || null,
+        primary_team_id: editForm.primary_team_id || null,
+        weekly_capacity_hours: editForm.weekly_capacity_hours,
+      }).eq('id', editTarget.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      setEditTarget(null);
+      toast.success('Cadastro atualizado', 'A alteracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from('profiles').update({ active }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, { active }) => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      setDeactivateTarget(null);
+      toast.success(active ? 'Usuario ativado' : 'Usuario inativado', 'A alteracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel alterar a situacao', describeError(e)),
+  });
+
+  const remove = useMutation({
+    mutationFn: (userId: string) => deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      setDeleteTarget(null);
+      toast.success('Usuario excluido', 'A exclusao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel excluir o usuario', describeError(e)),
+  });
+
+  function openEdit(p: Profile) {
+    setEditForm({
+      full_name: p.full_name,
+      job_title: p.job_title ?? '',
+      company_id: p.company_id ?? '',
+      primary_team_id: p.primary_team_id ?? '',
+      weekly_capacity_hours: p.weekly_capacity_hours,
+    });
+    setEditTarget(p);
+  }
 
   if (isLoading) return <Spinner />;
 
@@ -279,16 +341,43 @@ function UsersTab() {
                 <td className="px-3 py-2.5">
                   {p.active ? <Badge tone="ok">Ativo</Badge> : <Badge tone="neutral">Inativo</Badge>}
                 </td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="px-3 py-2.5">
                   {can('users.manage') && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<KeyRound className="h-3.5 w-3.5" />}
-                      onClick={() => setResetTarget({ id: p.id, name: p.full_name })}
-                    >
-                      Redefinir senha
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(p)}>
+                        Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<KeyRound className="h-3.5 w-3.5" />}
+                        onClick={() => setResetTarget({ id: p.id, name: p.full_name })}
+                      >
+                        Redefinir senha
+                      </Button>
+                      {/* Auto-inativacao e auto-exclusao ficam de fora da UI - travariam a
+                          propria conta administrativa sem outra pessoa para reverter. */}
+                      {p.id !== profile?.id && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={p.active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                            onClick={() => setDeactivateTarget({ id: p.id, name: p.full_name, active: !p.active })}
+                          >
+                            {p.active ? 'Inativar' : 'Ativar'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<Trash2 className="h-3.5 w-3.5" />}
+                            onClick={() => setDeleteTarget({ id: p.id, name: p.full_name, email: p.email })}
+                          >
+                            Excluir
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>
@@ -425,6 +514,88 @@ function UsersTab() {
           </div>
         )}
       </Modal>
+
+      <Modal
+        open={Boolean(editTarget)}
+        onClose={() => setEditTarget(null)}
+        title="Editar usuário"
+        description="Papel de acesso e permissao de troca de ambiente sao alterados direto na tabela."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>Cancelar</Button>
+            <Button onClick={() => editUser.mutate()} loading={editUser.isPending}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nome completo" required className="sm:col-span-2">
+            <Input value={editForm.full_name} onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))} />
+          </Field>
+          <Field label="E-mail" className="sm:col-span-2">
+            <Input readOnly value={editTarget?.email ?? ''} className="text-muted" />
+          </Field>
+          <Field label="Cargo">
+            <Input value={editForm.job_title} onChange={(e) => setEditForm((f) => ({ ...f, job_title: e.target.value }))} />
+          </Field>
+          <Field label="Capacidade semanal (h)">
+            <Input
+              type="number"
+              min={0}
+              max={200}
+              value={editForm.weekly_capacity_hours}
+              onChange={(e) => setEditForm((f) => ({ ...f, weekly_capacity_hours: Number(e.target.value) }))}
+            />
+          </Field>
+          <Field label="Empresa">
+            <Select value={editForm.company_id} onChange={(e) => setEditForm((f) => ({ ...f, company_id: e.target.value }))}>
+              <option value="">Nao informado</option>
+              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Equipe">
+            <Select value={editForm.primary_team_id} onChange={(e) => setEditForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+              <option value="">Sem equipe</option>
+              {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deactivateTarget)}
+        onClose={() => setDeactivateTarget(null)}
+        onConfirm={() => deactivateTarget && toggleActive.mutate({ id: deactivateTarget.id, active: deactivateTarget.active })}
+        loading={toggleActive.isPending}
+        danger={Boolean(deactivateTarget && !deactivateTarget.active)}
+        title={deactivateTarget?.active ? 'Ativar usuário' : 'Inativar usuário'}
+        confirmLabel={deactivateTarget?.active ? 'Ativar' : 'Inativar'}
+        description={
+          deactivateTarget?.active
+            ? <>Voce esta reativando <b>{deactivateTarget?.name}</b>. A pessoa volta a conseguir entrar na plataforma.</>
+            : <>Voce esta inativando <b>{deactivateTarget?.name}</b>. A pessoa continua com a conta e os dados intactos, mas nao consegue mais entrar ate ser reativada.</>
+        }
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget.id)}
+        loading={remove.isPending}
+        title="Excluir usuário"
+        confirmLabel="Excluir"
+        confirmText={deleteTarget?.email}
+        description={
+          <>
+            A conta de <b>{deleteTarget?.name}</b> sera excluida permanentemente - esta acao nao pode
+            ser desfeita. Projetos, tarefas, riscos e decisoes onde a pessoa era responsavel
+            permanecem, apenas sem responsavel atribuido. Vinculos de equipe, aprovacoes,
+            visualizacoes salvas e preferencias pessoais sao removidos junto - aprovacoes ficam
+            registradas na trilha de auditoria mesmo assim.
+            <br /><br />
+            Para confirmar, digite o e-mail <b>{deleteTarget?.email}</b> abaixo.
+          </>
+        }
+      />
     </>
   );
 }

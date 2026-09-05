@@ -68,3 +68,13 @@ export async function createUser(input: CreateUserInput): Promise<CreateUserResu
 export async function resetUserPassword(userId: string): Promise<ResetPasswordResult> {
   return invokeAdminFunction<ResetPasswordResult>('admin-reset-password', { user_id: userId });
 }
+
+/**
+ * Exclui a conta permanentemente (admin-delete-user). `profiles.id` referencia
+ * `auth.users(id) on delete cascade`, entao so' o Admin API (service_role)
+ * remove os dois de uma vez - excluir so' a linha de profiles deixaria uma
+ * conta de auth orfa, que continuaria logando sem enxergar nada.
+ */
+export async function deleteUser(userId: string): Promise<void> {
+  await invokeAdminFunction<{ id: string }>('admin-delete-user', { user_id: userId });
+}
