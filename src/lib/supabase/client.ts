@@ -30,10 +30,16 @@ interface EnvironmentConfig {
 // O projeto atual continua atendido pelas variaveis originais: sem as chaves
 // especificas de QA, ele e' o ambiente de QA. Isso mantem a aplicacao no ar
 // durante a transicao, sem exigir reconfiguracao imediata.
+//
+// Usa "||", nao "??": quando o segredo VITE_SUPABASE_QA_URL nao existe no
+// GitHub Actions, "${{ secrets.X }}" resolve para string vazia (nao omite a
+// variavel), entao import.meta.env.VITE_SUPABASE_QA_URL chega como "" - um
+// valor definido, so' que vazio. "??" so cai no fallback com null/undefined,
+// entao nunca alcancaria VITE_SUPABASE_URL enquanto o secret QA existir vazio.
 const config: Record<Environment, EnvironmentConfig> = {
   QA: {
-    url: import.meta.env.VITE_SUPABASE_QA_URL ?? import.meta.env.VITE_SUPABASE_URL,
-    anonKey: import.meta.env.VITE_SUPABASE_QA_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY,
+    url: import.meta.env.VITE_SUPABASE_QA_URL || import.meta.env.VITE_SUPABASE_URL,
+    anonKey: import.meta.env.VITE_SUPABASE_QA_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
   },
   PRD: {
     url: import.meta.env.VITE_SUPABASE_PRD_URL,
