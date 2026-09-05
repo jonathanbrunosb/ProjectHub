@@ -12,7 +12,7 @@ report, escalação de privilégio, validação financeira — está implementad
 
 ```
 src/
-  app/            Providers (tema, autenticação, TanStack Query) e roteamento
+  app/            Providers (tema, ambiente, autenticação, TanStack Query) e roteamento
   components/
     ui/           Design system interno (Button, Input, DataTable, Modal, Toast, ...)
     layout/       AppShell, Sidebar, Topbar, Breadcrumbs
@@ -21,12 +21,12 @@ src/
   features/       Um diretório por domínio (dashboard, portfolio, projects, tasks,
                   risks, financial, resources, calendar, reports, audit, settings)
   hooks/          Hooks transversais (ex.: useTableState)
-  lib/supabase/   Cliente e utilitários de auditoria
+  lib/supabase/   Clientes QA/PRD e utilitários de auditoria
   services/       Acesso a dados — única camada que fala com o Supabase
   types/          Tipos de domínio espelhando os enums do PostgreSQL
   utils/          Formatação, rótulos de domínio, helpers puros
 supabase/
-  migrations/     Migrations versionadas (0001 → 0013)
+  migrations/     Migrations versionadas (0001 → 0015)
   tests/          Shim do ambiente Supabase + testes de RLS e de regras de negócio
   seed.sql        Seed demonstrativo
 ```
@@ -38,6 +38,16 @@ supabase/
 - Cálculos usados em dashboards ficam em funções puras (`features/*/selectors.ts`),
   o que os torna testáveis sem renderizar componentes.
 - Nenhum arquivo concentra a aplicação: o maior módulo de feature tem ~700 linhas.
+
+## Ambientes QA e PRD
+
+QA e PRD são **dois projetos Supabase distintos**, não um filtro na mesma base. A
+aplicação mantém um cliente por ambiente e o export `supabase` é um `Proxy` que resolve no
+cliente ativo — a camada `services/` permanece inalterada e mesmo assim passa a respeitar o
+ambiente. Sessões, Storage, RLS e dados são fisicamente separados; não existe consulta que
+alcance o outro lado.
+
+Detalhamento, sequência de troca, permissão, guardas e provisionamento: **[AMBIENTES.md](AMBIENTES.md)**.
 
 ## Modelo de dados
 
@@ -57,6 +67,7 @@ Todas as tabelas usam UUID como chave e carregam `created_at`, `created_by`,
 | Flexibilidade | `custom_field_definitions`, `custom_field_options`, `custom_field_values` |
 | Colaboração | `comments`, `attachments`, `status_reports`, `saved_views`, `column_preferences`, `notifications`, `automation_rules` |
 | Auditoria | `application_audit_log` |
+| Configuração | `health_rules`, `app_environment` |
 
 ### Decisões de modelagem
 

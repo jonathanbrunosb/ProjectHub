@@ -42,4 +42,15 @@ $PSQL -f "$ROOT/supabase/seed.sql"
 echo "==> Testes de regras de negocio"
 $PSQL -f "$ROOT/supabase/tests/02_business_rules.sql"
 
+echo "==> Recarregando dados para os testes de ambiente"
+$PSQL -c "drop schema if exists public cascade; create schema public;" \
+      -c "drop schema if exists app cascade;" \
+      -c "drop schema if exists auth cascade; drop schema if exists storage cascade;"
+$PSQL -f "$ROOT/supabase/tests/00_supabase_shim.sql"
+for file in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$file"; done
+$PSQL -f "$ROOT/supabase/seed.sql"
+
+echo "==> Testes de segregacao de ambientes"
+$PSQL -f "$ROOT/supabase/tests/03_environment.sql"
+
 echo "==> Todos os testes de banco passaram."

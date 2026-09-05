@@ -7,7 +7,10 @@ import type { AuditAction } from '@/types/domain';
  * nao e' fonte de verdade da trilha.
  */
 export async function logAppEvent(
-  action: Extract<AuditAction, 'login' | 'logout' | 'export' | 'config_change'>,
+  action: Extract<
+    AuditAction,
+    'login' | 'logout' | 'export' | 'config_change' | 'environment_switch' | 'environment_switch_denied'
+  >,
   entity: string,
   options: { entityId?: string; projectId?: string; data?: Record<string, unknown> } = {},
 ): Promise<void> {

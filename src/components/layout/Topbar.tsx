@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Popover, PopoverItem } from '@/components/ui/Popover';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
+import { EnvironmentBadge } from '@/components/ui/EnvironmentBadge';
 import { useTheme } from '@/app/ThemeProvider';
 import { useAuth } from '@/app/AuthProvider';
 import { roleLabel } from '@/utils/domain-labels';
@@ -36,6 +37,9 @@ export function Topbar({ onOpenMenu, breadcrumbs }: { onOpenMenu: () => void; br
       </Button>
 
       <div className="min-w-0 flex-1">{breadcrumbs}</div>
+
+      <EnvironmentBadge className="hidden sm:inline-flex" />
+      <EnvironmentBadge compact className="sm:hidden" />
 
       <Link to="/notificacoes" className="relative rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-fg focus-ring" aria-label="Notificacoes">
         <Bell className="h-4 w-4" />

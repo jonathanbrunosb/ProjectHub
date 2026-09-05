@@ -14,6 +14,7 @@ import { Button } from './Button';
 import { Input, Select } from './Input';
 import { Popover, PopoverItem } from './Popover';
 import { EmptyState, SkeletonTable } from './Feedback';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 
 export interface DataTableState {
   sorting: SortingState;
@@ -54,6 +55,7 @@ export function DataTable<T extends object>({
   groupableColumns = [], toolbarExtra, emptyTitle = 'Nenhum registro encontrado',
   emptyDescription, exportFileName = 'export', onExport, pageSize = 25, stickyHeader = true,
 }: DataTableProps<T>) {
+  const { environment } = useEnvironment();
   const [internal, setInternal] = useState<DataTableState>(emptyTableState);
   const current = state ?? internal;
   const setState = (patch: Partial<DataTableState>) => {
@@ -101,7 +103,7 @@ export function DataTable<T extends object>({
 
   const handleExport = () => {
     if (onExport) return onExport();
-    exportRowsToCsv(table.getFilteredRowModel().rows.map((r) => r.original), columns, exportFileName);
+    exportRowsToCsv(table.getFilteredRowModel().rows.map((r) => r.original), columns, exportFileName, environment);
   };
 
   return (
@@ -319,8 +321,10 @@ function columnLabel(def: ColumnLike): string {
 }
 
 /** Exportacao CSV client-side respeitando as linhas ja filtradas pelo usuario. */
+/** O nome do arquivo carrega o ambiente: um export de QA nunca deve ser
+ *  confundido com um relatorio oficial de Producao. */
 export function exportRowsToCsv<T extends object>(
-  rows: T[], columns: ColumnDef<T, unknown>[], fileName: string,
+  rows: T[], columns: ColumnDef<T, unknown>[], fileName: string, environment?: string,
 ) {
   const cols = columns.filter((c) => (c.meta as { exportable?: boolean } | undefined)?.exportable !== false);
   const headers = cols.map((c) => columnLabel(c as ColumnLike));
@@ -341,7 +345,8 @@ export function exportRowsToCsv<T extends object>(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${fileName}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const envSuffix = environment ? `_${environment}` : '';
+  a.download = `${fileName}${envSuffix}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

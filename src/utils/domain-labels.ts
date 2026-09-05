@@ -172,6 +172,8 @@ export const auditActionLabel: Record<AuditAction, string> = {
   export: 'Exportacao',
   permission_change: 'Alteracao de permissao',
   config_change: 'Alteracao de configuracao',
+  environment_switch: 'Troca de ambiente',
+  environment_switch_denied: 'Troca de ambiente negada',
 };
 
 export const auditActionTone: Record<AuditAction, Tone> = {
@@ -180,6 +182,7 @@ export const auditActionTone: Record<AuditAction, Tone> = {
   status_change: 'brand', health_change: 'warn', financial_change: 'strategic',
   schedule_change: 'warn', ownership_change: 'strategic', export: 'info',
   permission_change: 'danger', config_change: 'neutral',
+  environment_switch: 'strategic', environment_switch_denied: 'danger',
 };
 
 export const statusReportStateLabel: Record<StatusReportState, string> = {
@@ -213,4 +216,5 @@ export const entityLabel: Record<string, string> = {
   automation_rules: 'Regra de automacao',
   auth: 'Autenticacao',
   report: 'Relatorio',
+  environment: 'Ambiente (QA/PRD)',
 };

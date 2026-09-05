@@ -148,6 +148,19 @@ function UsersTab() {
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen });
 
+  const changeEnvironmentAccess = useMutation({
+    mutationFn: async ({ id, allowed }: { id: string; allowed: boolean }) => {
+      const { error } = await supabase
+        .from('profiles').update({ can_switch_environment: allowed }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Acesso a ambientes atualizado', 'A alteracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel alterar o acesso', describeError(e)),
+  });
+
   const changeRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: RoleKey }) => {
       const { error } = await supabase.from('profiles').update({ role }).eq('id', id);
@@ -209,7 +222,7 @@ function UsersTab() {
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {['Usuario', 'Cargo', 'Papel de acesso', 'Capacidade', 'Situacao'].map((h) => (
+              {['Usuario', 'Cargo', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao'].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
               ))}
             </tr>
@@ -232,6 +245,23 @@ function UsersTab() {
                     </Select>
                   ) : (
                     <Badge tone="brand">{roleLabel[p.role]}</Badge>
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  {can('users.manage') ? (
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      <input
+                        type="checkbox"
+                        className="accent-[rgb(var(--c-brand))]"
+                        checked={p.can_switch_environment}
+                        onChange={(e) => changeEnvironmentAccess.mutate({ id: p.id, allowed: e.target.checked })}
+                      />
+                      {p.can_switch_environment ? 'Permitido' : 'Bloqueado'}
+                    </label>
+                  ) : (
+                    <Badge tone={p.can_switch_environment ? 'strategic' : 'neutral'}>
+                      {p.can_switch_environment ? 'Permitido' : 'Bloqueado'}
+                    </Badge>
                   )}
                 </td>
                 <td className="px-3 py-2.5 tabular-nums text-muted">{p.weekly_capacity_hours} h/sem</td>

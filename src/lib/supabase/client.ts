@@ -1,39 +1,125 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
 /**
+ * QA e PRD sao projetos Supabase fisicamente separados: banco, Auth, Storage e
+ * RLS independentes. A segregacao nao depende de nenhum filtro no frontend -
+ * um registro de QA nao existe no banco de PRD, e vice-versa.
+ *
  * A aplicacao usa exclusivamente a chave anon (publica). A service_role NUNCA
  * entra no bundle: operacoes privilegiadas ficam em Edge Functions.
- * Toda a autorizacao efetiva e' feita por RLS no PostgreSQL.
  */
-export const isSupabaseConfigured = Boolean(url && anonKey);
+export type Environment = 'QA' | 'PRD';
 
-function createStub(): SupabaseClient {
+export const ENVIRONMENTS: Environment[] = ['QA', 'PRD'];
+
+export const environmentLabel: Record<Environment, string> = {
+  QA: 'QA • Ambiente de Testes',
+  PRD: 'PRD • Produção',
+};
+
+export const environmentShortLabel: Record<Environment, string> = {
+  QA: 'Ambiente de Testes',
+  PRD: 'Ambiente de Produção',
+};
+
+interface EnvironmentConfig {
+  url?: string;
+  anonKey?: string;
+}
+
+// O projeto atual continua atendido pelas variaveis originais: sem as chaves
+// especificas de QA, ele e' o ambiente de QA. Isso mantem a aplicacao no ar
+// durante a transicao, sem exigir reconfiguracao imediata.
+const config: Record<Environment, EnvironmentConfig> = {
+  QA: {
+    url: import.meta.env.VITE_SUPABASE_QA_URL ?? import.meta.env.VITE_SUPABASE_URL,
+    anonKey: import.meta.env.VITE_SUPABASE_QA_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY,
+  },
+  PRD: {
+    url: import.meta.env.VITE_SUPABASE_PRD_URL,
+    anonKey: import.meta.env.VITE_SUPABASE_PRD_ANON_KEY,
+  },
+};
+
+export function isEnvironmentConfigured(environment: Environment): boolean {
+  const { url, anonKey } = config[environment];
+  return Boolean(url && anonKey);
+}
+
+export function configuredEnvironments(): Environment[] {
+  return ENVIRONMENTS.filter(isEnvironmentConfigured);
+}
+
+function createStub(environment: Environment): SupabaseClient {
   const message =
-    'Supabase nao configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.';
-  const handler: ProxyHandler<object> = {
+    `Ambiente ${environment} nao configurado. Defina VITE_SUPABASE_${environment}_URL `
+    + `e VITE_SUPABASE_${environment}_ANON_KEY no build.`;
+  return new Proxy({}, {
     get() {
       throw new Error(message);
     },
-  };
-  return new Proxy({}, handler) as SupabaseClient;
+  }) as SupabaseClient;
 }
 
-export const supabase: SupabaseClient = isSupabaseConfigured
-  ? createClient(url!, anonKey!, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: 'pmo.auth',
-      },
-      // Sem headers customizados de proposito: qualquer header fora do padrao
-      // obriga o preflight CORS a lista-lo explicitamente do outro lado, o que
-      // quebrava a chamada as Edge Functions sem ganho nenhum em troca.
-    })
-  : createStub();
+// Sessoes precisam de chaves de armazenamento distintas: uma sessao de QA nunca
+// pode ser lida como se fosse de PRD (o JWT de um projeto nao vale no outro).
+const clients: Record<Environment, SupabaseClient> = {
+  QA: isEnvironmentConfigured('QA')
+    ? createClient(config.QA.url!, config.QA.anonKey!, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storageKey: 'pmo.auth.QA',
+        },
+      })
+    : createStub('QA'),
+  PRD: isEnvironmentConfigured('PRD')
+    ? createClient(config.PRD.url!, config.PRD.anonKey!, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storageKey: 'pmo.auth.PRD',
+        },
+      })
+    : createStub('PRD'),
+};
+
+let activeEnvironment: Environment = configuredEnvironments()[0] ?? 'QA';
+
+export function getSupabaseClient(environment: Environment): SupabaseClient {
+  return clients[environment];
+}
+
+export function getActiveEnvironment(): Environment {
+  return activeEnvironment;
+}
+
+/**
+ * Troca o client ativo. Chamado apenas pelo EnvironmentProvider - o resto da
+ * aplicacao consome o proxy `supabase` e nunca guarda referencia direta a um
+ * client, o que impede reaproveitar o client anterior apos a troca.
+ */
+export function setActiveEnvironment(environment: Environment): void {
+  activeEnvironment = environment;
+}
+
+/**
+ * Proxy que resolve o client do ambiente ativo a cada acesso. Mantem toda a
+ * aplicacao existente funcionando sem alteracao e garante que nenhum modulo
+ * segure uma referencia obsoleta depois de uma troca de ambiente.
+ */
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = clients[activeEnvironment];
+    const value = Reflect.get(client as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+  has(_target, prop) {
+    return Reflect.has(clients[activeEnvironment] as object, prop);
+  },
+});
 
 /** Erro do PostgREST normalizado para mensagem legivel ao usuario. */
 export function describeError(error: unknown): string {

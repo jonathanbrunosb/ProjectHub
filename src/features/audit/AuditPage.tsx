@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ui/Feedback';
 import { useTableState } from '@/hooks/useTableState';
 import { useToast } from '@/components/ui/Toast';
 import { logAppEvent } from '@/lib/supabase/audit';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 import { listAuditLog } from '@/services/governance';
 import { listProfiles, listProjectOverview } from '@/services/projects';
 import { formatDateTime } from '@/utils/format';
@@ -26,6 +27,7 @@ import type { AuditLogEntry } from '@/types/domain';
 export function AuditPage() {
   useBreadcrumbs([{ label: 'Governanca' }, { label: 'Trilha de Auditoria' }]);
   const toast = useToast();
+  const { environment } = useEnvironment();
   const table = useTableState('audit');
   const [detail, setDetail] = useState<AuditLogEntry | null>(null);
   const [filters, setFilters] = useState({ userId: '', projectId: '', entity: '', action: '', from: '', to: '' });
@@ -71,8 +73,8 @@ export function AuditPage() {
   ], []);
 
   const handleExport = async () => {
-    exportRowsToCsv(data, columns, 'trilha-auditoria');
-    await logAppEvent('export', 'application_audit_log', { data: { rows: data.length, filters } });
+    exportRowsToCsv(data, columns, 'trilha-auditoria', environment);
+    await logAppEvent('export', 'application_audit_log', { data: { rows: data.length, filters, environment } });
     toast.success('Exportacao registrada', 'O evento de exportacao foi gravado na propria trilha.');
   };
 

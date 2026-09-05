@@ -12,6 +12,7 @@ import { HealthBadge, CriticalityBadge, DecisionStatusBadge } from '@/components
 import { Progress } from '@/components/ui/Progress';
 import { useToast } from '@/components/ui/Toast';
 import { logAppEvent } from '@/lib/supabase/audit';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 import { listProjectOverview } from '@/services/projects';
 import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
@@ -24,26 +25,29 @@ import { reports } from './reportDefinitions';
 /** Exporta qualquer tabela do relatorio como CSV e registra o evento. */
 function useExport(reportKey: string) {
   const toast = useToast();
+  const { environment } = useEnvironment();
   return async (rows: Record<string, unknown>[], fileName: string) => {
     if (rows.length === 0) {
       toast.warning('Nada a exportar', 'O relatorio nao possui linhas no escopo atual.');
       return;
     }
-    const headers = Object.keys(rows[0]);
+    const ambienteRotulo = environment === 'PRD' ? 'PRODUCAO' : 'QA / TESTES';
+    const enriched: Record<string, unknown>[] = rows.map((r) => ({ Ambiente: ambienteRotulo, ...r }));
+    const headers = Object.keys(enriched[0]);
     const escape = (v: unknown) => {
       if (v == null) return '';
       const s = String(v).replace(/"/g, '""');
       return /[",;\n]/.test(s) ? `"${s}"` : s;
     };
-    const csv = [headers.join(';'), ...rows.map((r) => headers.map((h) => escape(r[h])).join(';'))].join('\n');
+    const csv = [headers.join(';'), ...enriched.map((r) => headers.map((h) => escape(r[h])).join(';'))].join('\n');
     const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${fileName}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${fileName}_${environment}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    await logAppEvent('export', 'report', { data: { report: reportKey, rows: rows.length } });
+    await logAppEvent('export', 'report', { data: { report: reportKey, rows: rows.length, environment } });
     toast.success('Relatorio exportado', 'A exportacao foi registrada na trilha de auditoria.');
   };
 }

@@ -12,6 +12,7 @@ import { ErrorState, Spinner } from '@/components/ui/Feedback';
 import { GanttChart, type GanttScale } from '@/components/gantt/GanttChart';
 import { cn } from '@/utils/cn';
 import { useAuth } from '@/app/AuthProvider';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 import { useTableState } from '@/hooks/useTableState';
 import { listProjectOverview } from '@/services/projects';
 import { listCalendarEvents } from '@/services/governance';
@@ -35,6 +36,7 @@ export function PortfolioPage() {
   useBreadcrumbs([{ label: 'Portfolio de Projetos' }]);
   const navigate = useNavigate();
   const { can } = useAuth();
+  const { isPRD } = useEnvironment();
   const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState<ViewMode>('tabela');
   const [scale, setScale] = useState<GanttScale>('mes');
@@ -188,8 +190,16 @@ export function PortfolioPage() {
             { id: 'company_name', label: 'Empresa' },
           ]}
           exportFileName="portfolio-projetos"
-          emptyTitle="Nenhum projeto encontrado"
-          emptyDescription="Ajuste os filtros ou crie um novo projeto."
+          emptyTitle={
+            isPRD && data.length === 0
+              ? 'Nenhum projeto cadastrado em Produção'
+              : 'Nenhum projeto encontrado'
+          }
+          emptyDescription={
+            isPRD && data.length === 0
+              ? 'Comece cadastrando o primeiro projeto oficial do portfólio. Dados de QA não são replicados para Produção.'
+              : 'Ajuste os filtros ou crie um novo projeto.'
+          }
         />
       ) : mode === 'kanban' ? (
         <PortfolioKanban projects={projects} />

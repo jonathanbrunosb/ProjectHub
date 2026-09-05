@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { Spinner } from '@/components/ui/Feedback';
+import { useEnvironment } from '@/app/EnvironmentProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SignupPage } from '@/features/auth/SignupPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
@@ -26,9 +27,15 @@ const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then(
  * portanto deep links com BrowserRouter retornariam 404 no refresh.
  */
 export function App() {
+  const { environment } = useEnvironment();
+
   return (
     <HashRouter>
-      <Suspense fallback={<Spinner />}>
+      {/* A `key` remonta toda a arvore autenticada na troca de ambiente. Isso
+          descarta estado local de componentes - inclusive modais abertos e
+          formularios preenchidos - impedindo que um payload montado em QA seja
+          enviado ao PRD (ou o contrario). */}
+      <Suspense key={environment} fallback={<Spinner />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/cadastro" element={<SignupPage />} />
