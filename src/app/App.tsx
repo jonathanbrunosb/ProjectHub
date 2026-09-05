@@ -16,6 +16,7 @@ const SchedulePage = lazy(() => import('@/features/tasks/SchedulePage').then((m)
 const RisksPage = lazy(() => import('@/features/risks/RisksPage').then((m) => ({ default: m.RisksPage })));
 const ResourcesPage = lazy(() => import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })));
 const CalendarPage = lazy(() => import('@/features/calendar/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const GoalIndicatorsPage = lazy(() => import('@/features/goalIndicators/GoalIndicatorsPage').then((m) => ({ default: m.GoalIndicatorsPage })));
 const ReportsPage = lazy(() => import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const ReportDetailPage = lazy(() => import('@/features/reports/ReportDetailPage').then((m) => ({ default: m.ReportDetailPage })));
 const AuditPage = lazy(() => import('@/features/audit/AuditPage').then((m) => ({ default: m.AuditPage })));
@@ -49,6 +50,7 @@ export function App() {
               <Route path="riscos" element={<RisksPage />} />
               <Route path="recursos" element={<ResourcesPage />} />
               <Route path="calendario" element={<CalendarPage />} />
+              <Route path="indicadores-metas" element={<GoalIndicatorsPage />} />
               <Route path="relatorios" element={<ReportsPage />} />
               <Route path="relatorios/:reportKey" element={<ReportDetailPage />} />
               <Route path="notificacoes" element={<NotificationsPage />} />

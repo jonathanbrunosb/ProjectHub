@@ -22,6 +22,7 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `0014_environment.sql` | Declaração de ambiente (`app_environment`), `can_switch_environment`, ações de auditoria |
 | `0015_environment_audit.sql` | Auditoria da troca de ambiente, guarda de privilégio, gatilho tolerante a PK não-UUID |
 | `0016_financial_module_flag.sql` | Módulo financeiro opcional: `system_settings` (global), `projects.financial_module_mode` e `project_templates.financial_module_default` (inherit/enabled/disabled), guarda de privilégio, `v_project_overview.financial_effective_enabled` |
+| `0017_goal_indicators.sql` | Indicadores de Metas: `holidays` e dias úteis (`app.is_business_day`/`app.business_days_between`, inexistentes até aqui), `project_goal_settings`, `task_goal_config`, função central `app.calc_delivery_score`, views `v_task_goal_scores`/`v_project_goal_indicator`, fechamento de período (`goal_score_periods`, `close_goal_period`/`reopen_goal_period`) |
 
 > A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
 > usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
@@ -58,7 +59,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 121 testes de frontend (Vitest + Testing Library)
+npm run test                # 149 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
 ```
 
@@ -160,7 +161,7 @@ Resumo operacional:
 | | QA | PRD |
 |---|---|---|
 | Projeto Supabase | Existente | A provisionar |
-| Migrations `0001` → `0016` | Sim | Sim, as mesmas |
+| Migrations `0001` → `0017` | Sim | Sim, as mesmas |
 | `seed.sql` | Sim | **Nunca** (bloqueado por guarda) |
 | `app_environment` | `QA` | `PRD` (definir manualmente após as migrations) |
 | Edge Functions (`admin-create-user`, `admin-reset-password`, `admin-delete-user`) | Publicadas | Publicar |

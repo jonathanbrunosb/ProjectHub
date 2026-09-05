@@ -32,6 +32,7 @@ import { ProjectHeader } from './ProjectHeader';
 import { TaskList } from '@/features/tasks/TaskList';
 import { RiskTable, ActionPlanTable } from '@/features/risks/RiskViews';
 import { FinancialTab } from './tabs/FinancialTab';
+import { GoalIndicatorTab } from './tabs/GoalIndicatorTab';
 import { DecisionsTab, IndicatorsTab, StatusReportsTab } from './tabs/GovernanceTabs';
 import { CustomFieldsPanel } from '@/features/customfields/CustomFieldsPanel';
 import { GanttChart } from '@/components/gantt/GanttChart';
@@ -40,6 +41,7 @@ const TABS = [
   { key: 'visao-geral', label: 'Visao Geral' },
   { key: 'cronograma', label: 'Plano & Cronograma' },
   { key: 'tarefas', label: 'Tarefas & Entregas' },
+  { key: 'meta-prazo', label: 'Indicador de Meta' },
   { key: 'financeiro', label: 'Financeiro' },
   { key: 'recursos', label: 'Recursos' },
   { key: 'riscos', label: 'Riscos & Issues' },
@@ -71,7 +73,14 @@ export function ProjectPage() {
   const members = useQuery({ queryKey: ['members', projectId], queryFn: () => listProjectMembers(projectId) });
 
   const financialActive = overview.data?.financial_effective_enabled ?? true;
-  const visibleTabs = TABS.filter((t) => t.key !== 'financeiro' || financialActive);
+  const goalIndicatorActive = overview.data?.goal_indicator_enabled ?? false;
+  const canManageGoalIndicator = can('goal_indicator.manage');
+  const visibleTabs = TABS.filter((t) => {
+    if (t.key === 'financeiro') return financialActive;
+    // Privilegiado sempre ve a aba (precisa dela para ativar); demais so quando ja ativo.
+    if (t.key === 'meta-prazo') return goalIndicatorActive || canManageGoalIndicator;
+    return true;
+  });
 
   useBreadcrumbs([
     { label: 'Portfolio de Projetos', to: '/portfolio' },
@@ -127,6 +136,7 @@ export function ProjectPage() {
           module={`tasks-project`}
         />
       )}
+      {tab === 'meta-prazo' && <GoalIndicatorTab projectId={projectId} />}
       {tab === 'financeiro' && financialActive && <FinancialTab projectId={projectId} canManage={canManage} canEdit={canEdit} />}
       {tab === 'recursos' && <ResourcesTab projectId={projectId} members={members.data ?? []} loading={members.isLoading} />}
       {tab === 'riscos' && (

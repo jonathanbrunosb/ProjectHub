@@ -122,6 +122,28 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
     },
   },
   {
+    accessorKey: 'goal_indicator_realized', header: 'Indicador Realizado', meta: { label: 'Indicador Realizado', exportType: 'number' }, size: 150,
+    cell: ({ row }) => row.original.goal_indicator_enabled
+      ? <span className="tabular-nums text-sm">{row.original.goal_indicator_realized?.toFixed(2) ?? 'Pendente'}</span>
+      : <span className="text-xs text-muted">—</span>,
+  },
+  {
+    accessorKey: 'goal_indicator_projected', header: 'Indicador Projetado', meta: { label: 'Indicador Projetado', exportType: 'number' }, size: 150,
+    cell: ({ row }) => row.original.goal_indicator_enabled && row.original.goal_indicator_projected != null
+      ? <span className="tabular-nums text-sm text-muted">{row.original.goal_indicator_projected.toFixed(2)}</span>
+      : <span className="text-xs text-muted">—</span>,
+  },
+  {
+    id: 'goal_status', header: 'Status da Meta', meta: { label: 'Status da Meta', exportable: false }, size: 150,
+    accessorFn: (row) => row.goal_indicator_realized ?? row.goal_indicator_projected,
+    cell: ({ row }) => {
+      if (!row.original.goal_indicator_enabled) return <span className="text-xs text-muted">—</span>;
+      const v = row.original.goal_indicator_realized ?? row.original.goal_indicator_projected;
+      if (v == null) return <Badge tone="neutral">Pendente</Badge>;
+      return <Badge tone={v >= 10 ? 'ok' : v > 1 ? 'warn' : 'danger'}>{v >= 10 ? 'Acima da Meta' : v > 1 ? 'Abaixo da Meta' : 'Racional minimo'}</Badge>;
+    },
+  },
+  {
     accessorKey: 'next_milestone_date', header: 'Proxima entrega', meta: { label: 'Proxima entrega', exportType: 'date' }, size: 190,
     cell: ({ row }) => row.original.next_milestone_name ? (
       <div className="min-w-0">
@@ -143,4 +165,7 @@ export const portfolioDefaultHidden = {
   actual: false,
   progress_planned: false,
   start_date: false,
+  goal_indicator_realized: false,
+  goal_indicator_projected: false,
+  goal_status: false,
 };

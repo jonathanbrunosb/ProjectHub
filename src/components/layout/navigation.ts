@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FolderKanban, ListChecks, CalendarRange, ShieldAlert, Users,
-  FileBarChart, ScrollText, Settings, CalendarClock, Bell, type LucideIcon,
+  FileBarChart, ScrollText, Settings, CalendarClock, Bell, Target, type LucideIcon,
 } from 'lucide-react';
 import type { Capability } from '@/app/AuthProvider';
 
@@ -22,6 +22,7 @@ export const navigation: NavGroup[] = [
       { to: '/portfolio', label: 'Portfolio de Projetos', icon: FolderKanban },
       { to: '/tarefas', label: 'Tarefas & Entregas', icon: ListChecks },
       { to: '/cronograma', label: 'Cronograma Corporativo', icon: CalendarRange },
+      { to: '/indicadores-metas', label: 'Indicadores de Metas', icon: Target },
       { to: '/riscos', label: 'Riscos & Planos de Acao', icon: ShieldAlert },
       { to: '/recursos', label: 'Recursos & Capacidade', icon: Users },
       { to: '/calendario', label: 'Calendario Critico', icon: CalendarClock },

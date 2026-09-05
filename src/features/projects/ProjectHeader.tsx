@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pencil, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { Pencil, RefreshCw, ShieldCheck, Target, Wallet } from 'lucide-react';
 import type { ProjectOverview } from '@/types/domain';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -72,6 +72,12 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
               {project.financial_effective_enabled && (
                 <Badge tone="strategic"><Wallet className="mr-1 inline h-3 w-3" />Financeiro ativo</Badge>
               )}
+              {project.goal_indicator_enabled && project.goal_indicator_realized != null && (
+                <Badge tone={project.goal_indicator_realized >= 10 ? 'ok' : 'warn'}>
+                  <Target className="mr-1 inline h-3 w-3" />
+                  {project.goal_indicator_realized >= 10 ? 'Acima da Meta' : 'Abaixo da Meta'}
+                </Badge>
+              )}
             </div>
           </div>
 
@@ -133,6 +139,15 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
                   tone={Number(project.critical_risks) > 0 ? 'danger' : undefined} />
                 <Info label="Proximo marco" value={project.next_milestone_name ?? '—'} />
               </>
+            )}
+            {project.goal_indicator_enabled && (
+              <Info
+                label="Indicador de Meta"
+                value={project.goal_indicator_realized != null
+                  ? project.goal_indicator_realized.toFixed(2)
+                  : project.goal_indicator_projected != null ? `${project.goal_indicator_projected.toFixed(2)} (proj.)` : 'Pendente'}
+                tone={project.goal_indicator_realized != null && project.goal_indicator_realized < 10 ? 'danger' : undefined}
+              />
             )}
           </dl>
         </div>

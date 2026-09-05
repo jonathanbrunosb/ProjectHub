@@ -1,8 +1,9 @@
 import type {
-  ActionStatus, CalendarWindowKind, DecisionStatus, FinancialModuleMode, Health, Priority,
-  ProjectStatus, RiskCriticality, RiskStatus, RiskStrategy, RoleKey, TaskStatus, AuditAction,
-  StatusReportState,
+  ActionStatus, CalendarWindowKind, DecisionStatus, FinancialModuleMode, GoalDayBasis, GoalWeightMode,
+  Health, Priority, ProjectStatus, RiskCriticality, RiskStatus, RiskStrategy, RoleKey, TaskStatus,
+  AuditAction, StatusReportState,
 } from '@/types/domain';
+import type { DeliveryClassification } from '@/lib/goalScore';
 import type { Tone } from '@/components/ui/Badge';
 
 /**
@@ -47,6 +48,26 @@ export const priorityTone: Record<Priority, Tone> = {
 
 export const financialModeLabel: Record<FinancialModuleMode, string> = {
   inherit: 'Herdar configuracao padrao', enabled: 'Ativar neste projeto', disabled: 'Desativar neste projeto',
+};
+
+export const goalDayBasisLabel: Record<GoalDayBasis, string> = {
+  uteis: 'Dias uteis', corridos: 'Dias corridos',
+};
+
+export const goalWeightModeLabel: Record<GoalWeightMode, string> = {
+  igual: 'Distribuir pesos igualmente', manual: 'Peso manual por entrega',
+};
+
+/**
+ * Semaforo do Indicador de Metas: verde da Meta pra cima, ambar decrescente
+ * abaixo da Meta, vermelho so' no racional minimo - evita uma cor por decimal.
+ */
+export const goalClassificationLabel: Record<DeliveryClassification, string> = {
+  desafio: 'Desafio', meta: 'Meta atingida', abaixo_da_meta: 'Abaixo da Meta', racional_minimo: 'Racional minimo',
+};
+
+export const goalClassificationTone: Record<DeliveryClassification, Tone> = {
+  desafio: 'ok', meta: 'ok', abaixo_da_meta: 'warn', racional_minimo: 'danger',
 };
 
 export const taskStatusLabel: Record<TaskStatus, string> = {
