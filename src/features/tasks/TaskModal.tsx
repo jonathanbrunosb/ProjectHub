@@ -24,7 +24,7 @@ interface Props {
 
 const blank = {
   code: '', title: '', description: '', assignee_id: '', priority: 'media' as Priority,
-  status: 'nao_iniciada' as TaskStatus, start_date: '', due_date: '',
+  status: 'nao_iniciada' as TaskStatus, start_date: '', due_date: '', completed_at: '',
   weight: '1', progress: '0', is_milestone: false, is_critical: false, estimated_hours: '',
 };
 
@@ -62,6 +62,7 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
         status: task.status,
         start_date: task.start_date ?? '',
         due_date: task.due_date ?? '',
+        completed_at: task.completed_at ?? '',
         weight: String(task.weight),
         progress: String(task.progress),
         is_milestone: task.is_milestone,
@@ -99,6 +100,11 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
         status: form.status,
         start_date: form.start_date || null,
         due_date: form.due_date || null,
+        // Concluida carrega a data de conclusao (editavel - o gatilho do banco so'
+        // preenche current_date automaticamente quando o campo vem vazio); qualquer
+        // outro status limpa a data - uma tarefa reaberta nao deve continuar "concluida"
+        // para efeito do Indicador de Metas (nota realizada e' removida ate' concluir de novo).
+        completed_at: form.status === 'concluida' ? (form.completed_at || null) : null,
         weight: Number(form.weight) || 1,
         progress: Math.max(0, Math.min(100, Number(form.progress) || 0)),
         is_milestone: form.is_milestone,
@@ -122,6 +128,9 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ['goal-scores'] });
       queryClient.invalidateQueries({ queryKey: ['goal-indicator'] });
+      // Faltava isto: sem invalidar, reabrir o mesmo drawer mostrava o valor
+      // antigo em cache do checkbox/peso, dando a impressao de que nao salvou.
+      queryClient.invalidateQueries({ queryKey: ['goal-config'] });
       toast.success(task ? 'Tarefa atualizada' : 'Tarefa criada');
       onClose();
     },
@@ -195,6 +204,15 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
           <Field label="Termino">
             <Input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
           </Field>
+
+          {form.status === 'concluida' && (
+            <Field
+              label="Data de conclusao"
+              hint="Preenchida com a data de hoje automaticamente. Ajuste aqui se a conclusao real foi em outra data - usada no Indicador de Metas."
+            >
+              <Input type="date" value={form.completed_at} onChange={(e) => set('completed_at', e.target.value)} />
+            </Field>
+          )}
 
           <Field label="Peso" hint="Usado no calculo ponderado do avanco do projeto.">
             <Input type="number" min="0.1" step="0.5" value={form.weight} onChange={(e) => set('weight', e.target.value)} />
