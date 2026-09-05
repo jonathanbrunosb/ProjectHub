@@ -57,8 +57,16 @@ export function DashboardPage() {
   const byCategory = useMemo(() => groupCount(projects, (p) => p.category), [projects]);
   const byOwner = useMemo(() => groupCount(projects, (p) => p.owner_name).slice(0, 6), [projects]);
   const progressBars = useMemo(() => progressByProject(projects, 8), [projects]);
+  const anyFinancial = useMemo(() => projects.some((p) => p.financial_effective_enabled), [projects]);
+  const enabledProjectIds = useMemo(
+    () => new Set(projects.filter((p) => p.financial_effective_enabled).map((p) => p.id)),
+    [projects],
+  );
   const financialBars = useMemo(() => financialByProject(projects, 6), [projects]);
-  const curve = useMemo(() => consolidateCurve(curveQuery.data ?? []), [curveQuery.data]);
+  const curve = useMemo(
+    () => consolidateCurve(curveQuery.data ?? [], enabledProjectIds),
+    [curveQuery.data, enabledProjectIds],
+  );
   const capacity = useMemo(
     () => teamCapacity(capacityQuery.data ?? [], currentMonthKey()),
     [capacityQuery.data],
@@ -147,21 +155,25 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* KPIs financeiros e de governanca */}
+      {/* KPIs financeiros (so quando ha projeto com o modulo ativo no escopo) e de governanca */}
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
-        <KpiCard label="Orcamento" value={loading ? '—' : formatCurrencyCompact(kpis.budget)}
-          hint={formatCurrency(kpis.budget)} />
-        <KpiCard label="Realizado" value={loading ? '—' : formatCurrencyCompact(kpis.actual)}
-          hint={formatCurrency(kpis.actual)} />
-        <KpiCard label="Comprometido" value={loading ? '—' : formatCurrencyCompact(kpis.committed)}
-          hint={formatCurrency(kpis.committed)} />
-        <KpiCard
-          label="Forecast" value={loading ? '—' : formatCurrencyCompact(kpis.forecast)}
-          delta={kpis.forecastVariancePct} invertColors
-          deltaLabel="vs orcamento"
-          tone={kpis.forecastVariancePct > 5 ? 'danger' : 'default'}
-          hint={`Variacao: ${formatCurrency(kpis.forecastVariance)}`}
-        />
+        {(loading || anyFinancial) && (
+          <>
+            <KpiCard label="Orcamento" value={loading ? '—' : formatCurrencyCompact(kpis.budget)}
+              hint={formatCurrency(kpis.budget)} />
+            <KpiCard label="Realizado" value={loading ? '—' : formatCurrencyCompact(kpis.actual)}
+              hint={formatCurrency(kpis.actual)} />
+            <KpiCard label="Comprometido" value={loading ? '—' : formatCurrencyCompact(kpis.committed)}
+              hint={formatCurrency(kpis.committed)} />
+            <KpiCard
+              label="Forecast" value={loading ? '—' : formatCurrencyCompact(kpis.forecast)}
+              delta={kpis.forecastVariancePct} invertColors
+              deltaLabel="vs orcamento"
+              tone={kpis.forecastVariancePct > 5 ? 'danger' : 'default'}
+              hint={`Variacao: ${formatCurrency(kpis.forecastVariance)}`}
+            />
+          </>
+        )}
         <KpiCard
           label="Riscos criticos" value={loading ? '—' : kpis.criticalRisks} tone="danger"
           icon={<ShieldAlert className="h-4 w-4" />}
@@ -230,47 +242,49 @@ export function DashboardPage() {
         </ChartCard>
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <ChartCard
-          title="Evolucao financeira do portfolio"
-          description="Planejado x realizado x forecast por competencia"
-          loading={curveQuery.isLoading}
-          empty={curve.length === 0}
-        >
-          <ResponsiveContainer width="100%" height={260}>
-            <ComposedChart data={curve} margin={{ left: 4, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-              <XAxis dataKey="month" tickFormatter={formatMonth} tick={{ fontSize: 11, fill: colors.muted }} />
-              <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
-              <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} labelFormatter={formatMonth} />
-              <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
-              <Bar dataKey="planned" name="Planejado" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={22} />
-              <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={22} />
-              <Line dataKey="forecast" name="Forecast" stroke={colors.strategic} strokeWidth={2} dot={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </ChartCard>
+      {(loading || anyFinancial) && (
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <ChartCard
+            title="Evolucao financeira do portfolio"
+            description="Planejado x realizado x forecast por competencia"
+            loading={curveQuery.isLoading}
+            empty={curve.length === 0}
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={curve} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <XAxis dataKey="month" tickFormatter={formatMonth} tick={{ fontSize: 11, fill: colors.muted }} />
+                <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
+                <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} labelFormatter={formatMonth} />
+                <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
+                <Bar dataKey="planned" name="Planejado" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={22} />
+                <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={22} />
+                <Line dataKey="forecast" name="Forecast" stroke={colors.strategic} strokeWidth={2} dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ChartCard>
 
-        <ChartCard
-          title="Orcamento x realizado x forecast por projeto"
-          description="Seis maiores orcamentos da carteira"
-          loading={loading}
-          empty={financialBars.length === 0}
-        >
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={financialBars} margin={{ left: 4, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-              <XAxis dataKey="code" tick={{ fontSize: 10, fill: colors.muted }} interval={0} angle={-12} textAnchor="end" height={44} />
-              <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
-              <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} />
-              <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
-              <Bar dataKey="budget" name="Orcamento" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={16} />
-              <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={16} />
-              <Bar dataKey="forecast" name="Forecast" fill={colors.strategic} radius={[3, 3, 0, 0]} maxBarSize={16} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
+          <ChartCard
+            title="Orcamento x realizado x forecast por projeto"
+            description="Seis maiores orcamentos da carteira"
+            loading={loading}
+            empty={financialBars.length === 0}
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={financialBars} margin={{ left: 4, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                <XAxis dataKey="code" tick={{ fontSize: 10, fill: colors.muted }} interval={0} angle={-12} textAnchor="end" height={44} />
+                <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
+                <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} />
+                <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
+                <Bar dataKey="budget" name="Orcamento" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={16} />
+                <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={16} />
+                <Bar dataKey="forecast" name="Forecast" fill={colors.strategic} radius={[3, 3, 0, 0]} maxBarSize={16} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+      )}
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
         <ChartCard title="Projetos por categoria" loading={loading} empty={byCategory.length === 0} height={220}>

@@ -46,14 +46,20 @@ function projectSheet(list: Awaited<ReturnType<typeof listProjectOverview>>): Sh
       { key: 'proxima', header: 'Proxima entrega', type: 'date' },
       { key: 'alvo', header: 'Data-alvo', type: 'date' },
     ],
+    // Projetos sem o modulo financeiro ativo ficam com as colunas financeiras
+    // em branco, nunca em zero - zero pareceria "orcamento zerado", quando na
+    // verdade o financeiro nem se aplica a esse projeto.
     rows: list.map((p) => ({
       codigo: p.code, projeto: p.name, categoria: p.category,
       status: projectStatusLabel[p.status], saude: p.health,
       owner: p.owner_name ?? '', sponsor: p.sponsor_name ?? '',
       planejado: Number(p.progress_planned), realizado: Number(p.progress_actual),
       desvio: Number(p.progress_deviation),
-      orcamento: Number(p.budget), atual: Number(p.actual), forecast: Number(p.forecast),
-      desvioFin: Number(p.forecast_variance_pct), riscos: Number(p.critical_risks),
+      orcamento: p.financial_effective_enabled ? Number(p.budget) : '',
+      atual: p.financial_effective_enabled ? Number(p.actual) : '',
+      forecast: p.financial_effective_enabled ? Number(p.forecast) : '',
+      desvioFin: p.financial_effective_enabled ? Number(p.forecast_variance_pct) : '',
+      riscos: Number(p.critical_risks),
       proxima: p.next_milestone_date ?? '', alvo: p.target_date ?? '',
     })),
   };
@@ -189,6 +195,10 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
     case 'financeiro': {
       const list = await listProjectOverview();
       const k = portfolioKpis(list);
+      // A planilha de projetos do relatorio financeiro so' faz sentido para
+      // quem usa o modulo - misturar projetos sem financeiro exigiria linhas
+      // de orcamento zero que nao existem de verdade.
+      const financial = list.filter((p) => p.financial_effective_enabled);
       return [
         {
           name: 'Resumo Financeiro',
@@ -217,7 +227,7 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
             { key: 'variacao', header: 'Variacao (R$)', type: 'currency' },
             { key: 'variacaoPct', header: 'Variacao (%)', type: 'percent' },
           ],
-          rows: list.map((p) => ({
+          rows: financial.map((p) => ({
             codigo: p.code, projeto: p.name,
             orcamento: Number(p.budget), realizado: Number(p.actual),
             comprometido: Number(p.committed), forecast: Number(p.forecast),

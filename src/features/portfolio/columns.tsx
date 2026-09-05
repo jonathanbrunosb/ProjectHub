@@ -6,6 +6,11 @@ import { Progress } from '@/components/ui/Progress';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate, formatPercent, relativeFromNow } from '@/utils/format';
 
+/** Chaves financeiras: filtradas do portfolio inteiro quando nenhum projeto do
+ * escopo usa gestao financeira (ver PortfolioPage), para nao poluir a tabela
+ * com colunas irrelevantes ao contexto. */
+export const financialColumnKeys = ['financial_effective_enabled', 'budget', 'actual', 'committed', 'forecast', 'forecast_variance_pct'];
+
 /**
  * Colunas padrao do Portfolio. `meta.label` alimenta o seletor de colunas e a
  * exportacao; `meta.exportable: false` remove colunas puramente visuais e
@@ -83,6 +88,12 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
         ? <Badge tone="danger">{d} dias em atraso</Badge>
         : <span className="text-xs text-muted">No prazo</span>;
     },
+  },
+  {
+    accessorKey: 'financial_effective_enabled', header: 'Financeiro', meta: { label: 'Financeiro' }, size: 110,
+    cell: ({ getValue }) => (
+      <Badge tone={getValue() ? 'strategic' : 'neutral'}>{getValue() ? 'Ativo' : 'Inativo'}</Badge>
+    ),
   },
   { accessorKey: 'budget', header: 'Orcamento', meta: { label: 'Orcamento', exportType: 'currency' }, size: 140,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatCurrency(getValue() as number)}</span> },
