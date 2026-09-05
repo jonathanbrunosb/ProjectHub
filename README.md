@@ -159,7 +159,7 @@ se configurado; senão a do `github.io`) em *Site URL* e *Redirect URLs*:
 
 **Implementado e validado:** schema com 15 migrations versionadas, RLS em todas as
 tabelas expostas (47 asserções de teste), regras de negócio no banco (38 asserções),
-segregação QA/PRD (14 asserções), 42 testes de frontend, build e deploy automatizados.
+segregação QA/PRD (14 asserções), 73 testes de frontend, build e deploy automatizados.
 
 **Pendências conhecidas** — ver [`docs/OPERACAO.md`](docs/OPERACAO.md):
 upload de anexos pela interface, Edge Functions de integração (Teams/e-mail/Power BI),

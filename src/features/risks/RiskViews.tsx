@@ -46,9 +46,9 @@ export function RiskTable({
         ) },
       { accessorKey: 'category', header: 'Categoria', meta: { label: 'Categoria' }, size: 130,
         cell: ({ getValue }) => (getValue() as string) ?? '—' },
-      { accessorKey: 'probability', header: 'Prob.', meta: { label: 'Probabilidade' }, size: 70 },
-      { accessorKey: 'impact', header: 'Impacto', meta: { label: 'Impacto' }, size: 80 },
-      { accessorKey: 'score', header: 'Score', meta: { label: 'Score' }, size: 130,
+      { accessorKey: 'probability', header: 'Prob.', meta: { label: 'Probabilidade', exportType: 'integer' }, size: 70 },
+      { accessorKey: 'impact', header: 'Impacto', meta: { label: 'Impacto', exportType: 'integer' }, size: 80 },
+      { accessorKey: 'score', header: 'Score', meta: { label: 'Score', exportType: 'integer' }, size: 130,
         cell: ({ row }) => <CriticalityBadge score={row.original.score} /> },
       { id: 'criticidade', accessorFn: (r) => criticalityLabel[riskCriticality(r.score)],
         header: 'Criticidade', meta: { label: 'Criticidade' }, size: 110 },
@@ -61,13 +61,13 @@ export function RiskTable({
         } },
       { accessorKey: 'status', header: 'Status', meta: { label: 'Status' }, size: 130,
         cell: ({ row }) => <RiskStatusBadge status={row.original.status} /> },
-      { accessorKey: 'due_date', header: 'Prazo', meta: { label: 'Prazo' }, size: 120,
+      { accessorKey: 'due_date', header: 'Prazo', meta: { label: 'Prazo', exportType: 'date' }, size: 120,
         cell: ({ row }) => {
           const overdue = row.original.due_date && row.original.status !== 'encerrado'
             && (daysBetween(new Date(), row.original.due_date) ?? 0) < 0;
           return <span className={overdue ? 'font-medium text-danger' : ''}>{formatDate(row.original.due_date)}</span>;
         } },
-      { accessorKey: 'last_review_at', header: 'Ultima revisao', meta: { label: 'Ultima revisao' }, size: 120,
+      { accessorKey: 'last_review_at', header: 'Ultima revisao', meta: { label: 'Ultima revisao', exportType: 'date' }, size: 120,
         cell: ({ getValue }) => formatDate(getValue() as string) },
     ];
     if (showProject) {
@@ -144,7 +144,7 @@ export function ActionPlanTable({
           : <Badge tone="neutral">{row.original.origin}</Badge> },
       { id: 'owner', accessorFn: (r) => r.owner?.full_name ?? '', header: 'Responsavel', meta: { label: 'Responsavel' }, size: 160,
         cell: ({ row }) => row.original.owner?.full_name ?? '—' },
-      { accessorKey: 'due_date', header: 'Prazo', meta: { label: 'Prazo' }, size: 110,
+      { accessorKey: 'due_date', header: 'Prazo', meta: { label: 'Prazo', exportType: 'date' }, size: 110,
         cell: ({ getValue }) => formatDate(getValue() as string) },
       { id: 'atraso', accessorFn: (r) => {
           if (!r.due_date || ['concluida', 'cancelada'].includes(r.status)) return 0;
@@ -158,7 +158,7 @@ export function ActionPlanTable({
       { accessorKey: 'status', header: 'Status', meta: { label: 'Status' }, size: 130,
         cell: ({ row }) => <ActionStatusBadge status={row.original.status} /> },
       { accessorKey: 'priority', header: 'Prioridade', meta: { label: 'Prioridade' }, size: 110 },
-      { accessorKey: 'completed_at', header: 'Conclusao', meta: { label: 'Conclusao' }, size: 110,
+      { accessorKey: 'completed_at', header: 'Conclusao', meta: { label: 'Conclusao', exportType: 'date' }, size: 110,
         cell: ({ getValue }) => formatDate(getValue() as string) },
     ];
     if (showProject) {

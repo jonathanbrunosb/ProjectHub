@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Download } from 'lucide-react';
+import { FileSpreadsheet } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -10,9 +10,6 @@ import { KpiCard } from '@/components/ui/KpiCard';
 import { EmptyState, Spinner } from '@/components/ui/Feedback';
 import { HealthBadge, CriticalityBadge, DecisionStatusBadge } from '@/components/ui/StatusBadges';
 import { Progress } from '@/components/ui/Progress';
-import { useToast } from '@/components/ui/Toast';
-import { logAppEvent } from '@/lib/supabase/audit';
-import { useEnvironment } from '@/app/EnvironmentProvider';
 import { listProjectOverview } from '@/services/projects';
 import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
@@ -21,36 +18,7 @@ import { portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboa
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, daysBetween } from '@/utils/format';
 import { auditActionLabel, projectStatusLabel } from '@/utils/domain-labels';
 import { reports } from './reportDefinitions';
-
-/** Exporta qualquer tabela do relatorio como CSV e registra o evento. */
-function useExport(reportKey: string) {
-  const toast = useToast();
-  const { environment } = useEnvironment();
-  return async (rows: Record<string, unknown>[], fileName: string) => {
-    if (rows.length === 0) {
-      toast.warning('Nada a exportar', 'O relatorio nao possui linhas no escopo atual.');
-      return;
-    }
-    const ambienteRotulo = environment === 'PRD' ? 'PRODUCAO' : 'QA / TESTES';
-    const enriched: Record<string, unknown>[] = rows.map((r) => ({ Ambiente: ambienteRotulo, ...r }));
-    const headers = Object.keys(enriched[0]);
-    const escape = (v: unknown) => {
-      if (v == null) return '';
-      const s = String(v).replace(/"/g, '""');
-      return /[",;\n]/.test(s) ? `"${s}"` : s;
-    };
-    const csv = [headers.join(';'), ...enriched.map((r) => headers.map((h) => escape(r[h])).join(';'))].join('\n');
-    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${fileName}_${environment}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    await logAppEvent('export', 'report', { data: { report: reportKey, rows: rows.length, environment } });
-    toast.success('Relatorio exportado', 'A exportacao foi registrada na trilha de auditoria.');
-  };
-}
+import { useReportExport } from './useReportExport';
 
 export function ReportDetailPage() {
   const { reportKey = '' } = useParams();
@@ -60,7 +28,7 @@ export function ReportDetailPage() {
     { label: 'Relatorios', to: '/relatorios' },
     { label: definition?.title ?? 'Relatorio' },
   ]);
-  const exportCsv = useExport(reportKey);
+  const { exportReport, isExporting, canExport } = useReportExport();
 
   const projects = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
   const risks = useQuery({
@@ -98,37 +66,29 @@ export function ReportDetailPage() {
   if (!definition) return <EmptyState title="Relatorio nao encontrado" />;
   if (projects.isLoading) return <Spinner label="Montando relatorio" />;
 
-  const header = (rows: Record<string, unknown>[]) => (
+  const header = () => (
     <PageHeader
       title={definition.title}
       description={definition.description}
-      actions={
-        <Button variant="secondary" onClick={() => void exportCsv(rows, reportKey)} icon={<Download className="h-4 w-4" />}>
-          Exportar CSV
+      actions={canExport && (
+        <Button
+          variant="secondary"
+          onClick={() => void exportReport(reportKey)}
+          loading={isExporting(reportKey)}
+          disabled={isExporting(reportKey)}
+          icon={<FileSpreadsheet className="h-4 w-4" />}
+        >
+          {isExporting(reportKey) ? 'Gerando Excel...' : 'Exportar Excel'}
         </Button>
-      }
+      )}
     />
   );
 
   // ---- Portfolio Review / Status Report Executivo ---------------------------
   if (reportKey === 'portfolio-review' || reportKey === 'status-report-executivo') {
-    const rows = list.map((p) => ({
-      Codigo: p.code, Projeto: p.name, Categoria: p.category,
-      Status: projectStatusLabel[p.status], Saude: p.health, Owner: p.owner_name ?? '',
-      Sponsor: p.sponsor_name ?? '',
-      'Avanco planejado (%)': Number(p.progress_planned),
-      'Avanco realizado (%)': Number(p.progress_actual),
-      'Desvio (p.p.)': Number(p.progress_deviation),
-      Orcamento: Number(p.budget), Realizado: Number(p.actual), Forecast: Number(p.forecast),
-      'Desvio financeiro (%)': Number(p.forecast_variance_pct),
-      'Riscos criticos': Number(p.critical_risks),
-      'Proxima entrega': p.next_milestone_date ?? '',
-      'Data-alvo': p.target_date ?? '',
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
           <KpiCard label="Projetos ativos" value={kpis.active} />
           <KpiCard label="No prazo" value={kpis.onTrack} tone="ok" />
@@ -190,14 +150,9 @@ export function ReportDetailPage() {
       .filter((m) => !m.completed_at && (daysBetween(new Date(), m.due_date) ?? -1) >= 0)
       .slice(0, 12);
 
-    const rows = pending.map((d) => ({
-      Projeto: d.project?.code ?? '', Assunto: d.subject, Decisor: d.decider?.full_name ?? '',
-      Prazo: d.deadline ?? '', Recomendacao: d.recommendation ?? '',
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <div className="space-y-4">
           <Panel title={`Projetos que exigem atencao do comite (${critical.length})`}>
             {critical.map((p) => (
@@ -255,17 +210,9 @@ export function ReportDetailPage() {
   if (reportKey === 'riscos') {
     const all = (risks.data ?? []).filter((r) => r.status !== 'encerrado')
       .sort((a, b) => b.score - a.score);
-    const rows = all.map((r) => ({
-      Projeto: r.project?.code ?? '', ID: r.code, Tipo: r.kind, Titulo: r.title,
-      Categoria: r.category ?? '', Probabilidade: r.probability, Impacto: r.impact, Score: r.score,
-      Estrategia: r.strategy ?? '', Responsavel: r.owner?.full_name ?? '',
-      Prazo: r.due_date ?? '', Status: r.status, 'Ultima revisao': r.last_review_at ?? '',
-      'Plano de mitigacao': r.mitigation_plan ?? '',
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <SimpleTable
           headers={['Projeto', 'ID', 'Risco', 'Score', 'Estrategia', 'Responsavel', 'Prazo', 'Status']}
           rows={all.map((r) => [
@@ -283,15 +230,9 @@ export function ReportDetailPage() {
 
   // ---- Financeiro -----------------------------------------------------------
   if (reportKey === 'financeiro') {
-    const rows = list.map((p) => ({
-      Codigo: p.code, Projeto: p.name, Orcamento: Number(p.budget), Realizado: Number(p.actual),
-      Comprometido: Number(p.committed), Forecast: Number(p.forecast), Saldo: Number(p.remaining),
-      'Variacao (R$)': Number(p.forecast_variance), 'Variacao (%)': Number(p.forecast_variance_pct),
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <KpiCard label="Budget total" value={formatCurrency(kpis.budget)} />
           <KpiCard label="Realizado" value={formatCurrency(kpis.actual)} />
@@ -320,15 +261,9 @@ export function ReportDetailPage() {
     const month = currentMonthKey();
     const rowsRaw = (capacity.data ?? []).filter((r) => r.reference_month === month);
     const byTeam = teamCapacity(capacity.data ?? [], month);
-    const rows = rowsRaw.map((r) => ({
-      Colaborador: r.full_name, Equipe: r.team_name ?? '',
-      'Capacidade (h)': Number(r.capacity_hours), 'Alocado (h)': Number(r.allocated_hours),
-      'Alocacao (%)': Number(r.allocation_pct), Projetos: r.project_count,
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <div className="mb-4">
           <SimpleTable
             headers={['Equipe', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Situacao']}
@@ -389,7 +324,7 @@ export function ReportDetailPage() {
 
     return (
       <>
-        {header(rows)}
+        {header()}
         <div className="mb-4 grid grid-cols-3 gap-3">
           <KpiCard label="Tarefas vencidas" value={overdueTasks.length} tone="danger" />
           <KpiCard label="Marcos vencidos" value={overdueMilestones.length} tone="danger" />
@@ -412,15 +347,9 @@ export function ReportDetailPage() {
     const pending = (decisions.data ?? [])
       .filter((d) => d.status === 'aguardando_decisao' || d.status === 'em_preparacao')
       .sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999'));
-    const rows = pending.map((d) => ({
-      Projeto: d.project?.code ?? '', Codigo: d.code, Assunto: d.subject,
-      Decisor: d.decider?.full_name ?? '', Prazo: d.deadline ?? '', Status: d.status,
-      Recomendacao: d.recommendation ?? '',
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <SimpleTable
           headers={['Projeto', 'Codigo', 'Assunto', 'Decisor', 'Prazo', 'Status']}
           rows={pending.map((d) => {
@@ -443,14 +372,9 @@ export function ReportDetailPage() {
   if (reportKey === 'historico-mudancas') {
     const relevant = (audit.data ?? []).filter((e) =>
       ['status_change', 'health_change', 'financial_change', 'schedule_change', 'ownership_change', 'permission_change'].includes(e.action));
-    const rows = relevant.map((e) => ({
-      'Data/hora (UTC)': e.occurred_at, Usuario: e.user_name ?? '', Acao: auditActionLabel[e.action],
-      Entidade: e.entity, Campos: (e.changed_fields ?? []).join(', '),
-    }));
-
     return (
       <>
-        {header(rows)}
+        {header()}
         <SimpleTable
           headers={['Data/hora', 'Usuario', 'Acao', 'Entidade', 'Campos alterados']}
           rows={relevant.map((e) => [

@@ -7,14 +7,17 @@ import {
 } from '@tanstack/react-table';
 import {
   ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown,
-  Columns3, Download, Pin, RotateCcw, Search,
+  Columns3, FileSpreadsheet, Pin, RotateCcw, Search,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from './Button';
 import { Input, Select } from './Input';
 import { Popover, PopoverItem } from './Popover';
 import { EmptyState, SkeletonTable } from './Feedback';
+import { useToast } from './Toast';
 import { useEnvironment } from '@/app/EnvironmentProvider';
+import { buildFileName, downloadWorkbook, type CellType, type SheetColumn } from '@/lib/export/xlsx';
+import type { Environment } from '@/lib/supabase/client';
 
 export interface DataTableState {
   sorting: SortingState;
@@ -45,6 +48,8 @@ interface DataTableProps<T> {
   emptyTitle?: string;
   emptyDescription?: string;
   exportFileName?: string;
+  /** Titulo legivel gravado dentro da planilha. Default: o nome do arquivo. */
+  exportTitle?: string;
   onExport?: () => void;
   pageSize?: number;
   stickyHeader?: boolean;
@@ -53,9 +58,12 @@ interface DataTableProps<T> {
 export function DataTable<T extends object>({
   data, columns, loading, state, onStateChange, onRowClick, getRowId,
   groupableColumns = [], toolbarExtra, emptyTitle = 'Nenhum registro encontrado',
-  emptyDescription, exportFileName = 'export', onExport, pageSize = 25, stickyHeader = true,
+  emptyDescription, exportFileName = 'export', exportTitle, onExport,
+  pageSize = 25, stickyHeader = true,
 }: DataTableProps<T>) {
   const { environment } = useEnvironment();
+  const toast = useToast();
+  const [exporting, setExporting] = useState(false);
   const [internal, setInternal] = useState<DataTableState>(emptyTableState);
   const current = state ?? internal;
   const setState = (patch: Partial<DataTableState>) => {
@@ -101,9 +109,26 @@ export function DataTable<T extends object>({
     [table, current.visibility, current.order],
   );
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (onExport) return onExport();
-    exportRowsToCsv(table.getFilteredRowModel().rows.map((r) => r.original), columns, exportFileName, environment);
+    setExporting(true);
+    try {
+      // Colunas visiveis, na ordem da tela - o arquivo espelha o que o usuario
+      // ve. Linhas filtradas, nunca a base inteira.
+      await exportRowsToXlsx(
+        table.getFilteredRowModel().rows.map((r) => r.original),
+        table.getVisibleLeafColumns().map((c) => c.columnDef as ColumnLike),
+        exportFileName,
+        { environment, title: exportTitle ?? exportFileName },
+      );
+    } catch (err) {
+      toast.error(
+        'Nao foi possivel gerar o arquivo Excel',
+        err instanceof Error ? err.message : 'Tente novamente.',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -178,8 +203,15 @@ export function DataTable<T extends object>({
           </div>
         </Popover>
 
-        <Button variant="secondary" size="md" onClick={handleExport} icon={<Download className="h-4 w-4" />}>
-          Exportar
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={() => void handleExport()}
+          loading={exporting}
+          disabled={exporting}
+          icon={<FileSpreadsheet className="h-4 w-4" />}
+        >
+          {exporting ? 'Gerando Excel...' : 'Exportar Excel'}
         </Button>
       </div>
 
@@ -313,6 +345,14 @@ export function DataTable<T extends object>({
 /** Rotulo legivel da coluna: meta.label, senao o header textual, senao o id. */
 type ColumnLike = { meta?: unknown; header?: unknown; id?: string; accessorKey?: string };
 
+interface ColumnMeta {
+  label?: string;
+  /** false remove a coluna da exportacao (colunas puramente visuais). */
+  exportable?: boolean;
+  /** Tipo da celula no Excel - sem isso o valor sai como texto. */
+  exportType?: CellType;
+}
+
 function columnLabel(def: ColumnLike): string {
   const meta = def.meta as { label?: string } | undefined;
   if (meta?.label) return meta.label;
@@ -320,33 +360,38 @@ function columnLabel(def: ColumnLike): string {
   return String(def.id ?? def.accessorKey ?? '');
 }
 
-/** Exportacao CSV client-side respeitando as linhas ja filtradas pelo usuario. */
-/** O nome do arquivo carrega o ambiente: um export de QA nunca deve ser
- *  confundido com um relatorio oficial de Producao. */
-export function exportRowsToCsv<T extends object>(
-  rows: T[], columns: ColumnDef<T, unknown>[], fileName: string, environment?: string,
-) {
-  const cols = columns.filter((c) => (c.meta as { exportable?: boolean } | undefined)?.exportable !== false);
-  const headers = cols.map((c) => columnLabel(c as ColumnLike));
-  const keys = cols.map((c) => (c as ColumnLike).accessorKey ?? (c as ColumnLike).id ?? '');
+/**
+ * Exportacao Excel client-side.
+ *
+ * Exporta as linhas ja filtradas pelo usuario (nunca a base inteira) e apenas
+ * as colunas visiveis, na ordem da tela: o arquivo espelha o que esta sendo
+ * analisado. `meta.exportable: false` remove colunas puramente visuais e
+ * `meta.exportType` declara moeda, percentual ou data para que o Excel receba
+ * numeros e datas de verdade, e nao texto.
+ *
+ * O nome do arquivo carrega o ambiente: um export de QA nunca deve ser
+ * confundido com um relatorio oficial de Producao.
+ */
+export async function exportRowsToXlsx<T extends object>(
+  rows: T[],
+  columns: ColumnLike[],
+  fileName: string,
+  meta: { environment: Environment; title: string; userEmail?: string | null; filters?: Record<string, unknown> },
+): Promise<void> {
+  const cols = columns.filter((c) => (c.meta as ColumnMeta | undefined)?.exportable !== false);
+  const sheetColumns: SheetColumn[] = cols.map((c) => ({
+    key: c.accessorKey ?? c.id ?? '',
+    header: columnLabel(c),
+    type: (c.meta as ColumnMeta | undefined)?.exportType,
+  }));
 
-  const escape = (v: unknown) => {
-    if (v == null) return '';
-    const s = String(v).replace(/"/g, '""');
-    return /[",;\n]/.test(s) ? `"${s}"` : s;
-  };
-
-  const csv = [
-    headers.join(';'),
-    ...rows.map((row) => keys.map((k) => escape((row as Record<string, unknown>)[k])).join(';')),
-  ].join('\n');
-
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const envSuffix = environment ? `_${environment}` : '';
-  a.download = `${fileName}${envSuffix}_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadWorkbook({
+    fileName: buildFileName(fileName, meta.environment),
+    meta,
+    sheets: [{
+      name: meta.title,
+      columns: sheetColumns,
+      rows: rows as unknown as Record<string, unknown>[],
+    }],
+  });
 }

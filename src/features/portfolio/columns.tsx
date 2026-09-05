@@ -8,7 +8,9 @@ import { formatCurrency, formatDate, formatPercent, relativeFromNow } from '@/ut
 
 /**
  * Colunas padrao do Portfolio. `meta.label` alimenta o seletor de colunas e a
- * exportacao CSV; `meta.exportable: false` remove colunas puramente visuais.
+ * exportacao; `meta.exportable: false` remove colunas puramente visuais e
+ * `meta.exportType` faz o Excel receber moeda, percentual e data como valores
+ * de verdade - sem isso tudo chegaria na planilha como texto.
  */
 export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
   {
@@ -59,22 +61,22 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
     accessorKey: 'health', header: 'Saude', meta: { label: 'Saude' }, size: 130,
     cell: ({ row }) => <HealthBadge health={row.original.health} manual={row.original.health_is_manual} />,
   },
-  { accessorKey: 'start_date', header: 'Inicio', meta: { label: 'Data inicio' }, size: 110,
+  { accessorKey: 'start_date', header: 'Inicio', meta: { label: 'Data inicio', exportType: 'date' }, size: 110,
     cell: ({ getValue }) => formatDate(getValue() as string) },
-  { accessorKey: 'target_date', header: 'Data-alvo', meta: { label: 'Data-alvo' }, size: 110,
+  { accessorKey: 'target_date', header: 'Data-alvo', meta: { label: 'Data-alvo', exportType: 'date' }, size: 110,
     cell: ({ getValue }) => formatDate(getValue() as string) },
   {
-    accessorKey: 'progress_planned', header: 'Avanco planejado', meta: { label: 'Avanco planejado' }, size: 130,
+    accessorKey: 'progress_planned', header: 'Avanco planejado', meta: { label: 'Avanco planejado', exportType: 'percent' }, size: 130,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatPercent(getValue() as number)}</span>,
   },
   {
-    accessorKey: 'progress_actual', header: 'Avanco realizado', meta: { label: 'Avanco realizado' }, size: 170,
+    accessorKey: 'progress_actual', header: 'Avanco realizado', meta: { label: 'Avanco realizado', exportType: 'percent' }, size: 170,
     cell: ({ row }) => (
       <Progress value={row.original.progress_actual} planned={row.original.progress_planned} size="sm" />
     ),
   },
   {
-    accessorKey: 'days_overdue', header: 'Desvio de prazo', meta: { label: 'Desvio de prazo' }, size: 130,
+    accessorKey: 'days_overdue', header: 'Desvio de prazo', meta: { label: 'Desvio de prazo', exportType: 'integer' }, size: 130,
     cell: ({ row }) => {
       const d = Number(row.original.days_overdue ?? 0);
       return d > 0
@@ -82,16 +84,16 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
         : <span className="text-xs text-muted">No prazo</span>;
     },
   },
-  { accessorKey: 'budget', header: 'Orcamento', meta: { label: 'Orcamento' }, size: 140,
+  { accessorKey: 'budget', header: 'Orcamento', meta: { label: 'Orcamento', exportType: 'currency' }, size: 140,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatCurrency(getValue() as number)}</span> },
-  { accessorKey: 'actual', header: 'Realizado', meta: { label: 'Realizado' }, size: 140,
+  { accessorKey: 'actual', header: 'Realizado', meta: { label: 'Realizado', exportType: 'currency' }, size: 140,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatCurrency(getValue() as number)}</span> },
-  { accessorKey: 'committed', header: 'Comprometido', meta: { label: 'Comprometido' }, size: 140,
+  { accessorKey: 'committed', header: 'Comprometido', meta: { label: 'Comprometido', exportType: 'currency' }, size: 140,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatCurrency(getValue() as number)}</span> },
-  { accessorKey: 'forecast', header: 'Forecast', meta: { label: 'Forecast' }, size: 140,
+  { accessorKey: 'forecast', header: 'Forecast', meta: { label: 'Forecast', exportType: 'currency' }, size: 140,
     cell: ({ getValue }) => <span className="tabular-nums text-sm">{formatCurrency(getValue() as number)}</span> },
   {
-    accessorKey: 'forecast_variance_pct', header: 'Desvio financeiro', meta: { label: 'Desvio financeiro' }, size: 140,
+    accessorKey: 'forecast_variance_pct', header: 'Desvio financeiro', meta: { label: 'Desvio financeiro', exportType: 'percent' }, size: 140,
     cell: ({ getValue }) => {
       const v = Number(getValue() ?? 0);
       return (
@@ -102,14 +104,14 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
     },
   },
   {
-    accessorKey: 'critical_risks', header: 'Riscos criticos', meta: { label: 'Riscos criticos' }, size: 120,
+    accessorKey: 'critical_risks', header: 'Riscos criticos', meta: { label: 'Riscos criticos', exportType: 'integer' }, size: 120,
     cell: ({ getValue }) => {
       const n = Number(getValue() ?? 0);
       return n > 0 ? <Badge tone="danger">{n}</Badge> : <span className="text-xs text-muted">0</span>;
     },
   },
   {
-    accessorKey: 'next_milestone_date', header: 'Proxima entrega', meta: { label: 'Proxima entrega' }, size: 190,
+    accessorKey: 'next_milestone_date', header: 'Proxima entrega', meta: { label: 'Proxima entrega', exportType: 'date' }, size: 190,
     cell: ({ row }) => row.original.next_milestone_name ? (
       <div className="min-w-0">
         <p className="truncate text-sm">{row.original.next_milestone_name}</p>
@@ -118,7 +120,7 @@ export const portfolioColumns: ColumnDef<ProjectOverview, unknown>[] = [
     ) : <span className="text-xs text-muted">—</span>,
   },
   {
-    accessorKey: 'last_update_at', header: 'Ultima atualizacao', meta: { label: 'Ultima atualizacao' }, size: 150,
+    accessorKey: 'last_update_at', header: 'Ultima atualizacao', meta: { label: 'Ultima atualizacao', exportType: 'datetime' }, size: 150,
     cell: ({ getValue }) => <span className="text-xs text-muted">{relativeFromNow(getValue() as string)}</span>,
   },
 ];

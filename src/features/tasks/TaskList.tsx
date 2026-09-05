@@ -80,9 +80,9 @@ export function TaskList({
         cell: ({ row }) => <TaskStatusBadge status={row.original.status} /> },
       { accessorKey: 'priority', header: 'Prioridade', meta: { label: 'Prioridade' }, size: 110,
         cell: ({ row }) => <Badge tone={priorityTone[row.original.priority]}>{priorityLabel[row.original.priority]}</Badge> },
-      { accessorKey: 'start_date', header: 'Inicio', meta: { label: 'Inicio' }, size: 100,
+      { accessorKey: 'start_date', header: 'Inicio', meta: { label: 'Inicio', exportType: 'date' }, size: 100,
         cell: ({ getValue }) => formatDate(getValue() as string) },
-      { accessorKey: 'due_date', header: 'Termino', meta: { label: 'Termino' }, size: 120,
+      { accessorKey: 'due_date', header: 'Termino', meta: { label: 'Termino', exportType: 'date' }, size: 120,
         cell: ({ row }) => {
           const overdue = row.original.due_date
             && !['concluida', 'cancelada'].includes(row.original.status)
@@ -98,9 +98,9 @@ export function TaskList({
           const v = Number(getValue() ?? 0);
           return v > 0 ? <Badge tone="danger">{v}</Badge> : <span className="text-xs text-muted">—</span>;
         } },
-      { accessorKey: 'weight', header: 'Peso', meta: { label: 'Peso' }, size: 80,
+      { accessorKey: 'weight', header: 'Peso', meta: { label: 'Peso', exportType: 'number' }, size: 80,
         cell: ({ getValue }) => <span className="tabular-nums text-sm">{Number(getValue()).toFixed(1)}</span> },
-      { accessorKey: 'progress', header: 'Progresso', meta: { label: 'Progresso' }, size: 140,
+      { accessorKey: 'progress', header: 'Progresso', meta: { label: 'Progresso', exportType: 'percent' }, size: 140,
         cell: ({ row }) => <Progress value={row.original.progress} size="sm" /> },
     ];
     if (showProjectColumn) {

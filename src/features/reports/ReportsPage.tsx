@@ -1,11 +1,16 @@
 import { Link } from 'react-router-dom';
+import { Eye, FileSpreadsheet } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { buttonClasses } from '@/components/ui/buttonStyles';
 import { reports } from './reportDefinitions';
+import { useReportExport } from './useReportExport';
 
 export function ReportsPage() {
   useBreadcrumbs([{ label: 'Governanca' }, { label: 'Relatorios' }]);
+  const { exportReport, isExporting, canExport } = useReportExport();
 
   return (
     <>
@@ -15,22 +20,42 @@ export function ReportsPage() {
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {reports.map((r) => (
-          <Link
-            key={r.key}
-            to={`/relatorios/${r.key}`}
-            className="card group p-4 transition-shadow hover:shadow-pop focus-ring"
-          >
+          <article key={r.key} className="card flex flex-col p-4">
             <div className="flex items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
                 <r.icon className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <h2 className="text-sm font-semibold group-hover:text-brand">{r.title}</h2>
+                <h2 className="text-sm font-semibold">{r.title}</h2>
                 <p className="mt-1 text-xs leading-relaxed text-muted">{r.description}</p>
                 <Badge tone="neutral" className="mt-2">{r.audience}</Badge>
               </div>
             </div>
-          </Link>
+
+            {/* Botoes fora do link: <button> dentro de <a> e' HTML invalido e
+                quebra a navegacao por teclado. */}
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <Link
+                to={`/relatorios/${r.key}`}
+                className={buttonClasses({ variant: 'secondary', size: 'sm', className: 'gap-1.5' })}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Visualizar
+              </Link>
+              {canExport && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void exportReport(r.key)}
+                  loading={isExporting(r.key)}
+                  disabled={isExporting(r.key)}
+                  icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+                >
+                  {isExporting(r.key) ? 'Gerando...' : 'Excel'}
+                </Button>
+              )}
+            </div>
+          </article>
         ))}
       </div>
     </>
