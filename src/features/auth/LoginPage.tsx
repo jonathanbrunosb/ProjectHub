@@ -6,6 +6,7 @@ import { useEnvironment } from '@/app/EnvironmentProvider';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, PasswordInput } from '@/components/ui/Input';
 import { BrandHeader, BrandLockupCompact } from '@/components/layout/BrandMark';
+import { AuthEnvironmentPicker } from './AuthEnvironmentPicker';
 import { describeError } from '@/lib/supabase/client';
 
 export function LoginPage() {
@@ -79,6 +80,8 @@ export function LoginPage() {
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />
           </div>
+
+          <AuthEnvironmentPicker />
 
           <h2 className="text-xl font-semibold tracking-tight">Acessar a plataforma</h2>
           <p className="mt-1 text-sm text-muted">Use suas credenciais corporativas.</p>

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ENVIRONMENTS, configuredEnvironments, getSupabaseClient, isEnvironmentConfigured,
+  ENVIRONMENTS, defaultEnvironment, getSupabaseClient, isEnvironmentConfigured,
   setActiveEnvironment, type Environment,
 } from '@/lib/supabase/client';
 
@@ -31,7 +31,7 @@ function isEnvironment(value: unknown): value is Environment {
  * Auth e RLS proprios - sem conta naquele projeto, nao ha acesso a dado algum.
  */
 function resolveInitialEnvironment(): Environment {
-  const fallback = configuredEnvironments()[0] ?? 'QA';
+  const fallback = defaultEnvironment();
 
   if (typeof window !== 'undefined') {
     // HashRouter mantem a query depois do '#', entao os dois lugares valem.
