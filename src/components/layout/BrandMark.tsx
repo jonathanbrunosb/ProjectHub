@@ -13,7 +13,9 @@ import { cn } from '@/utils/cn';
  */
 const LOGO_CANDIDATES = ['/logo-equatorial.svg', '/logo-equatorial.png'];
 
-export function GroupLogo({ className, textSize = 'text-xs' }: { className?: string; textSize?: string }) {
+export function GroupLogo({
+  className, textSize = 'text-xs', variant = 'default',
+}: { className?: string; textSize?: string; variant?: 'default' | 'light' }) {
   const [attempt, setAttempt] = useState(0);
 
   if (attempt >= LOGO_CANDIDATES.length) {
@@ -25,7 +27,8 @@ export function GroupLogo({ className, textSize = 'text-xs' }: { className?: str
       <span
         className={cn(
           'inline-flex max-w-full items-center overflow-hidden whitespace-nowrap font-semibold',
-          'uppercase tracking-[0.14em] text-nav-muted',
+          'uppercase tracking-[0.14em]',
+          variant === 'light' ? 'text-white' : 'text-nav-muted',
           textSize,
           className,
         )}
@@ -40,7 +43,10 @@ export function GroupLogo({ className, textSize = 'text-xs' }: { className?: str
       key={LOGO_CANDIDATES[attempt]}
       src={LOGO_CANDIDATES[attempt]}
       alt="Grupo Equatorial"
-      className={cn('object-contain', className)}
+      // A marca oficial e' um tom solido de azul sobre fundo transparente -
+      // brightness-0 achata para preto opaco e invert vira branco puro,
+      // sem precisar de um segundo arquivo de logo so' para fundo escuro.
+      className={cn('object-contain', variant === 'light' && 'brightness-0 invert', className)}
       onError={() => setAttempt((a) => a + 1)}
     />
   );
@@ -69,7 +75,8 @@ export function ProductLockup({ size = 'md', className }: { size?: keyof typeof 
 export function BrandHeader({ logoClassName, className }: { logoClassName?: string; className?: string }) {
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      <GroupLogo className={cn('h-7 max-w-[176px]', logoClassName)} textSize="text-xs" />
+      {/* Painel institucional e' sempre bg-nav (escuro) - logo em branco. */}
+      <GroupLogo className={cn('h-7 max-w-[176px]', logoClassName)} textSize="text-xs" variant="light" />
       <ProductLockup size="lg" />
     </div>
   );
@@ -80,10 +87,10 @@ export function BrandHeader({ logoClassName, className }: { logoClassName?: stri
  * `min-w-0` nos dois filhos permite que o flex encolha o que precisar em vez
  * de estourar a largura do container (o que causaria rolagem horizontal).
  */
-export function BrandLockupCompact({ className }: { className?: string }) {
+export function BrandLockupCompact({ className, variant = 'default' }: { className?: string; variant?: 'default' | 'light' }) {
   return (
     <div className={cn('flex min-w-0 items-center gap-2', className)}>
-      <GroupLogo className="h-5 max-w-[88px] shrink-0" textSize="text-[9px]" />
+      <GroupLogo className="h-5 max-w-[88px] shrink-0" textSize="text-[9px]" variant={variant} />
       <ProductLockup size="sm" className="min-w-0 flex-1" />
     </div>
   );

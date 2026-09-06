@@ -31,7 +31,7 @@ export function Sidebar({
             </div>
           ) : (
             <>
-              <GroupLogo className="h-6 max-w-[88px] shrink-0" textSize="text-[9px]" />
+              <GroupLogo className="h-6 max-w-[88px] shrink-0" textSize="text-[9px]" variant="light" />
               <ProductLockup size="sm" className="min-w-0 flex-1" />
             </>
           )}
