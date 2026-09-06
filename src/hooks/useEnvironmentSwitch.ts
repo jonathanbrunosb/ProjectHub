@@ -1,7 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '@/app/AuthProvider';
 import { useEnvironment } from '@/app/EnvironmentProvider';
 import { logAppEvent } from '@/lib/supabase/audit';
+import { bridgeEnvironmentLogin } from '@/services/envBridge';
 import type { Environment } from '@/lib/supabase/client';
 
 /**
@@ -10,15 +11,20 @@ import type { Environment } from '@/lib/supabase/client';
  * A permissao aqui governa a experiencia: quem pode ver e usar o seletor.
  * A seguranca real vem de os ambientes serem projetos Supabase distintos -
  * sem conta e sessao validas no projeto de destino, nao ha acesso a dado
- * nenhum, independentemente do que a interface permita clicar.
+ * nenhum, independentemente do que a interface permita clicar. A ponte
+ * (`bridgeEnvironmentLogin`) e' o que estabelece essa sessao automaticamente
+ * para quem tem `can_switch_environment`; se ela falhar por qualquer motivo,
+ * a troca segue mesmo assim e a pessoa cai no login/cadastro manual do
+ * ambiente de destino - o "cenario reservo", nunca o caminho padrao.
  */
 export function useEnvironmentSwitch() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const { environment, available, switchEnvironment } = useEnvironment();
+  const [switching, setSwitching] = useState(false);
 
   const canSwitch = Boolean(profile?.can_switch_environment) && available.length > 1;
 
-  const requestSwitch = useCallback((target: Environment) => {
+  const requestSwitch = useCallback(async (target: Environment) => {
     if (target === environment) return;
 
     if (!profile?.can_switch_environment) {
@@ -33,8 +39,20 @@ export function useEnvironmentSwitch() {
       data: { from_environment: environment, to_environment: target },
     });
 
-    switchEnvironment(target);
-  }, [environment, profile?.can_switch_environment, switchEnvironment]);
+    if (session?.access_token) {
+      setSwitching(true);
+      try {
+        await bridgeEnvironmentLogin(target, session.access_token);
+      } catch {
+        // Ponte indisponivel (funcao nao implantada/configurada, conta
+        // inativa no destino, etc.) - segue para o cenario reservo abaixo.
+      } finally {
+        setSwitching(false);
+      }
+    }
 
-  return { environment, available, canSwitch, requestSwitch };
+    switchEnvironment(target);
+  }, [environment, profile?.can_switch_environment, session?.access_token, switchEnvironment]);
+
+  return { environment, available, canSwitch, requestSwitch, switching };
 }

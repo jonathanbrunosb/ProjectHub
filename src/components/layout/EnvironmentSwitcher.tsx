@@ -11,7 +11,7 @@ import { ENVIRONMENTS, isEnvironmentConfigured, environmentShortLabel } from '@/
  * nunca e' escondida, apenas a acao de trocar.
  */
 export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
-  const { environment, canSwitch, requestSwitch } = useEnvironmentSwitch();
+  const { environment, canSwitch, requestSwitch, switching } = useEnvironmentSwitch();
 
   if (collapsed) {
     return (
@@ -36,9 +36,9 @@ export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
               <button
                 key={env}
                 type="button"
-                disabled={!configured}
+                disabled={!configured || switching}
                 aria-pressed={active}
-                onClick={() => requestSwitch(env)}
+                onClick={() => void requestSwitch(env)}
                 className={cn(
                   'flex-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors focus-ring',
                   'disabled:cursor-not-allowed disabled:opacity-40',
@@ -70,7 +70,7 @@ export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
       )}
 
       <p className="mt-1.5 text-[10px] leading-snug text-nav-muted">
-        {environmentShortLabel[environment]}
+        {switching ? 'Alternando ambiente...' : environmentShortLabel[environment]}
       </p>
     </div>
   );
