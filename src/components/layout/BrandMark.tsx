@@ -89,9 +89,9 @@ export function BrandHeader({ logoClassName, className }: { logoClassName?: stri
  */
 export function BrandLockupCompact({ className, variant = 'default' }: { className?: string; variant?: 'default' | 'light' }) {
   return (
-    <div className={cn('flex min-w-0 items-center gap-2', className)}>
-      <GroupLogo className="h-5 max-w-[88px] shrink-0" textSize="text-[9px]" variant={variant} />
-      <ProductLockup size="sm" className="min-w-0 flex-1" />
+    <div className={cn('flex min-w-0 items-center gap-3', className)}>
+      <GroupLogo className="h-9 max-w-[150px] shrink-0" textSize="text-xs" variant={variant} />
+      <ProductLockup size="md" className="min-w-0 flex-1" />
     </div>
   );
 }
