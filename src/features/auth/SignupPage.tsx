@@ -62,7 +62,7 @@ export function SignupPage() {
 
   if (done === 'confirm') {
     return (
-      <div className="flex min-h-screen items-center justify-center px-6">
+      <div className="theme-light-scope flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
         <div className="w-full max-w-sm text-center">
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-ok/10 text-ok">
             <CheckCircle2 className="h-6 w-6" />
@@ -100,7 +100,7 @@ export function SignupPage() {
         </p>
       </div>
 
-      <div className="flex items-center justify-center px-6 py-10 sm:py-12">
+      <div className="theme-light-scope flex items-center justify-center bg-bg px-6 py-10 text-fg sm:py-12">
         <div className="w-full" style={{ maxWidth: 'min(100%, 480px)' }}>
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />

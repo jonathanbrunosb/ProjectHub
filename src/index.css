@@ -64,4 +64,28 @@
   .card { @apply bg-surface border border-border rounded-xl shadow-card; }
   .field-label { @apply block text-xs font-medium text-muted mb-1.5; }
   .focus-ring { @apply outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-1 focus-visible:ring-offset-bg; }
+
+  /*
+   * Forca os tokens de tema claro dentro do escopo, mesmo com `.dark` ativo
+   * em <html> (tela de login/cadastro: o painel do formulario e' sempre
+   * claro por design, independente da preferencia de tema do usuario).
+   */
+  .theme-light-scope {
+    --c-bg: 247 248 250;
+    --c-surface: 255 255 255;
+    --c-surface-2: 244 246 249;
+    --c-border: 226 232 240;
+    --c-fg: 15 23 42;
+    --c-muted: 100 116 139;
+    --c-brand: 29 78 216;
+    --c-brand-fg: 255 255 255;
+    --c-brand-soft: 219 234 254;
+    --c-ok: 22 163 74;
+    --c-warn: 217 119 6;
+    --c-danger: 220 38 38;
+    --c-info: 2 132 199;
+    --c-strategic: 124 58 237;
+    --c-neutral: 100 116 139;
+    color-scheme: light;
+  }
 }
