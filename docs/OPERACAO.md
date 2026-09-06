@@ -151,6 +151,38 @@ Não é preciso configurar nenhuma variável nova: `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` e `SUPABASE_ANON_KEY` já existem automaticamente no
 ambiente de toda Edge Function no Supabase.
 
+### env-switch-login (ponte de login entre QA e PRD)
+
+Habilita, para quem tem `can_switch_environment = true`, trocar de ambiente pelo
+menu lateral sem cair no cadastro manual do outro lado. Implantada **nos dois
+projetos** (mesmo código nos dois), com duas particularidades em relação às
+outras três funções acima:
+
+1. **Dois segredos extras por projeto, cada um apontando para o OUTRO:**
+   - Em QA: `PEER_SUPABASE_URL` e `PEER_SUPABASE_ANON_KEY` = URL/anon key de **PRD**.
+   - Em PRD: `PEER_SUPABASE_URL` e `PEER_SUPABASE_ANON_KEY` = URL/anon key de **QA**.
+   - Definidos em **Edge Functions → env-switch-login → Secrets** no painel, ou
+     via `supabase secrets set NOME="valor" --project-ref <ref>`.
+
+2. **Verificação de JWT da plataforma DESLIGADA** (`--no-verify-jwt`), nos dois
+   projetos:
+   ```
+   supabase functions deploy env-switch-login --no-verify-jwt --project-ref <ref-qa>
+   supabase functions deploy env-switch-login --no-verify-jwt --project-ref <ref-prd>
+   ```
+   Diferente das outras Edge Functions (que recebem o token de quem chama no
+   mesmo projeto, e por isso passam na verificação padrão do Supabase), esta
+   função recebe **de propósito** o token de sessão do ambiente de *origem* da
+   troca - um JWT de outro projeto, que a verificação automática do projeto de
+   *destino* sempre rejeitaria antes mesmo do código rodar. A função faz a
+   própria verificação por dentro (valida esse token direto contra a API do
+   projeto de origem antes de liberar qualquer acesso), então desligar a
+   checagem automática aqui não abre brecha nenhuma - só destrava o fluxo que
+   ela mesma protege depois.
+   Esquecer esse passo é o sintoma mais comum: a troca de ambiente "não dá erro
+   nenhum", só continua caindo no login manual, porque a chamada é rejeitada
+   na entrada, antes de a função sequer rodar.
+
 ## Ambientes QA e PRD
 
 QA e PRD são **projetos Supabase separados**. O provisionamento de PRD, as variáveis de
