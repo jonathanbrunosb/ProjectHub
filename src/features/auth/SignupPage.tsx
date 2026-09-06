@@ -5,6 +5,7 @@ import { useAuth } from '@/app/AuthProvider';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, PasswordInput } from '@/components/ui/Input';
 import { BrandHeader, BrandLockupCompact } from '@/components/layout/BrandMark';
+import { AuthEnvironmentPicker } from './AuthEnvironmentPicker';
 import { describeError } from '@/lib/supabase/client';
 
 /**
@@ -105,6 +106,8 @@ export function SignupPage() {
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />
           </div>
+
+          <AuthEnvironmentPicker />
 
           <h2 className="text-xl font-semibold tracking-tight">Criar conta</h2>
           <p className="mt-1 text-sm text-muted">Use seu e-mail corporativo.</p>

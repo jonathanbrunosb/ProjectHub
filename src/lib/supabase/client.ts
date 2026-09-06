@@ -56,6 +56,19 @@ export function configuredEnvironments(): Environment[] {
   return ENVIRONMENTS.filter(isEnvironmentConfigured);
 }
 
+/**
+ * Ambiente assumido quando nao ha preferencia salva (primeiro acesso, ou
+ * localStorage limpo por troca de navegador/dispositivo/"limpar dados do
+ * site"). PRD vem primeiro porque este e' o dominio corporativo de producao -
+ * um localStorage vazio nao deve jogar o usuario silenciosamente para QA,
+ * onde a conta de producao normalmente nao existe (login "invalido" sem
+ * nenhum problema real de credencial).
+ */
+export function defaultEnvironment(): Environment {
+  const configured = configuredEnvironments();
+  return configured.includes('PRD') ? 'PRD' : (configured[0] ?? 'QA');
+}
+
 function createStub(environment: Environment): SupabaseClient {
   const message =
     `Ambiente ${environment} nao configurado. Defina VITE_SUPABASE_${environment}_URL `
@@ -92,7 +105,7 @@ const clients: Record<Environment, SupabaseClient> = {
     : createStub('PRD'),
 };
 
-let activeEnvironment: Environment = configuredEnvironments()[0] ?? 'QA';
+let activeEnvironment: Environment = defaultEnvironment();
 
 export function getSupabaseClient(environment: Environment): SupabaseClient {
   return clients[environment];
