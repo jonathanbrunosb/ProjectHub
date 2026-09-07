@@ -59,7 +59,7 @@ Todas as tabelas usam UUID como chave e carregam `created_at`, `created_by`,
 
 | Bloco | Tabelas |
 |---|---|
-| Identidade e organização | `profiles`, `companies`, `business_units`, `teams`, `team_memberships` |
+| Identidade e organização | `profiles`, `companies`, `business_units` (Gerência), `areas`, `user_area_assignments`, `teams`, `team_memberships` |
 | Portfólio | `portfolios`, `project_templates`, `template_phases`, `template_tasks`, `projects`, `project_members`, `project_business_units`, `project_phases` |
 | Execução | `tasks`, `task_dependencies`, `task_corresponsibles`, `task_checklist_items`, `task_reschedules`, `milestones` |
 | Financeiro | `project_budgets`, `financial_entries`, `cost_centers` |
@@ -104,6 +104,17 @@ vencidos e riscos críticos sem mitigação, com limiares configuráveis em `hea
 O override manual (`public.override_project_health`) exige justificativa de no mínimo 10
 caracteres e grava autor e data — a função rejeita a operação se a justificativa for
 insuficiente ou se o usuário não gerenciar o projeto.
+
+**Área reaproveita `business_units` como Gerência, em vez de duplicar a hierarquia.**
+`business_units` existia desde a fundação do schema (Gerência), mas nunca teve UI.
+`areas` (0020) é filha dela — `Gerência (business_units) → Área → Equipe (teams.area_id) →
+Colaborador (profiles.area_id)`. O vínculo pessoa↔área é rastreado com histórico em
+`user_area_assignments` (`valid_from`/`valid_to`, um vínculo primário "aberto" por vez,
+garantido por índice único parcial); `profiles.area_id` é só um ponteiro para o vínculo
+corrente, sincronizado por gatilho — consultas de capacidade por período devem ler
+`user_area_assignments` no mês de referência, não o ponteiro. `area_id` nasce opcional em
+`profiles`/`teams` de propósito: tornar obrigatório exige saneamento administrativo prévio
+dos colaboradores existentes, tratado em uma migration futura.
 
 ### Views de leitura
 
