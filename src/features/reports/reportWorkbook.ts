@@ -4,7 +4,7 @@ import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listAuditLog } from '@/services/governance';
 import { listAllTaskGoalScores } from '@/services/goalIndicators';
-import { areaCapacity, portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboard/selectors';
+import { areaCapacity, portfolioKpis, currentMonthKey } from '@/features/dashboard/selectors';
 import { daysBetween } from '@/utils/format';
 import { auditActionLabel, projectStatusLabel } from '@/utils/domain-labels';
 
@@ -296,23 +296,8 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
       const month = currentMonthKey();
       const capacity = await listCapacity();
       const rows = capacity.filter((r) => r.reference_month === month);
-      const byTeam = teamCapacity(capacity, month);
       const byArea = areaCapacity(capacity, month);
       return [
-        {
-          name: 'Resumo',
-          columns: [
-            { key: 'equipe', header: 'Equipe', type: 'text' },
-            { key: 'capacidade', header: 'Capacidade (h)', type: 'number' },
-            { key: 'alocado', header: 'Alocado (h)', type: 'number' },
-            { key: 'alocacao', header: 'Alocacao', type: 'percent' },
-            { key: 'situacao', header: 'Situacao', type: 'text' },
-          ],
-          rows: byTeam.map((t) => ({
-            equipe: t.team, capacidade: t.capacity, alocado: t.allocated, alocacao: t.pct,
-            situacao: t.pct > 100 ? 'Sobrecarga' : t.pct > 85 ? 'Atencao' : 'Adequada',
-          })),
-        },
         {
           name: 'Por area',
           columns: [
@@ -334,7 +319,6 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
           name: 'Colaboradores',
           columns: [
             { key: 'colaborador', header: 'Colaborador', type: 'text' },
-            { key: 'equipe', header: 'Equipe', type: 'text' },
             { key: 'area', header: 'Area', type: 'text' },
             { key: 'capacidade', header: 'Capacidade (h)', type: 'number' },
             { key: 'alocado', header: 'Alocado (h)', type: 'number' },
@@ -342,7 +326,7 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
             { key: 'projetos', header: 'Projetos', type: 'integer' },
           ],
           rows: rows.map((r) => ({
-            colaborador: r.full_name, equipe: r.team_name ?? '', area: r.area_name ?? '',
+            colaborador: r.full_name, area: r.area_name ?? '',
             capacidade: Number(r.capacity_hours), alocado: Number(r.allocated_hours),
             alocacao: Number(r.allocation_pct), projetos: r.project_count,
           })),

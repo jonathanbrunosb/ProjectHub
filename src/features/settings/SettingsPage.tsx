@@ -26,11 +26,11 @@ import {
   deleteDefinition, listAllDefinitions, replaceOptions, upsertDefinition,
 } from '@/services/customFields';
 import {
-  listActiveProfiles, listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
+  listActiveProfiles, listCompanies, listProfiles, listTemplates, updateTemplateFinancialDefault,
 } from '@/services/projects';
 import {
   assignPrimaryArea, createArea, createBusinessUnit, listAreas, listBusinessUnits, setAreaActive,
-  setBusinessUnitActive, updateArea, updateBusinessUnit, updateTeamArea, type AreaWithRelations,
+  setBusinessUnitActive, updateArea, updateBusinessUnit, type AreaWithRelations,
 } from '@/services/areas';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
@@ -47,7 +47,6 @@ const TABS = [
   { key: 'usuarios', label: 'Usuarios & Permissoes' },
   { key: 'campos', label: 'Campos personalizados' },
   { key: 'templates', label: 'Templates' },
-  { key: 'equipes', label: 'Equipes' },
   { key: 'gerencias', label: 'Gerencias' },
   { key: 'areas', label: 'Areas' },
   { key: 'modulos', label: 'Modulos' },
@@ -69,7 +68,7 @@ export function SettingsPage() {
 
   const visible = TABS.filter((t) => {
     if (t.key === 'usuarios' || t.key === 'sistema') return can('users.manage') || can('settings.manage');
-    if (t.key === 'campos' || t.key === 'templates' || t.key === 'equipes' || t.key === 'gerencias' || t.key === 'areas') {
+    if (t.key === 'campos' || t.key === 'templates' || t.key === 'gerencias' || t.key === 'areas') {
       return can('portfolio.manage');
     }
     if (t.key === 'modulos') return can('financial_module.manage');
@@ -88,7 +87,6 @@ export function SettingsPage() {
       {tab === 'usuarios' && <UsersTab />}
       {tab === 'campos' && <CustomFieldsTab />}
       {tab === 'templates' && <TemplatesTab />}
-      {tab === 'equipes' && <TeamsTab />}
       {tab === 'gerencias' && <GerenciasTab />}
       {tab === 'areas' && <AreasTab />}
       {tab === 'modulos' && <ModulosTab />}
@@ -172,11 +170,11 @@ function ProfileTab() {
 
 // ---------------------------------------------------------------------------
 const blankNewUser = {
-  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '', area_id: '',
+  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', area_id: '',
 };
 
 const blankEditForm = {
-  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40, area_id: '',
+  full_name: '', job_title: '', company_id: '', weekly_capacity_hours: 40, area_id: '',
 };
 
 /** Pendencia administrativa (item 8): filtro especial, nao um id de area de verdade. */
@@ -200,11 +198,9 @@ function UsersTab() {
   const [areaFilter, setAreaFilter] = useState('');
 
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen || Boolean(editTarget) });
-  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen || Boolean(editTarget) });
   const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
 
   const areaById = useMemo(() => new Map((areas.data ?? []).map((a) => [a.id, a])), [areas.data]);
-  const teamById = useMemo(() => new Map((teams.data ?? []).map((t) => [t.id, t])), [teams.data]);
 
   const pendingArea = useMemo(() => data.filter((p) => p.active && !p.area_id), [data]);
 
@@ -213,23 +209,6 @@ function UsersTab() {
     if (areaFilter === PENDING_AREA_FILTER) return p.active && !p.area_id;
     return p.area_id === areaFilter;
   }), [data, areaFilter]);
-
-  /** Se a equipe escolhida ja tem area definida e o campo Area ainda esta vazio, sugere a mesma area. */
-  function suggestAreaFromTeam(teamId: string, currentAreaId: string): string {
-    if (currentAreaId) return currentAreaId;
-    return teamById.get(teamId)?.area_id ?? '';
-  }
-
-  /**
-   * Item 7: nao bloqueia a combinacao, mas avisa quando a equipe escolhida
-   * pertence a uma area estrutural diferente da area selecionada para a pessoa.
-   */
-  function teamAreaMismatch(teamId: string, areaId: string): string | null {
-    const team = teamById.get(teamId);
-    if (!team?.area_id || !areaId || team.area_id === areaId) return null;
-    const teamAreaName = areaById.get(team.area_id)?.name ?? 'outra area';
-    return `A equipe "${team.name}" pertence a ${teamAreaName} - confirme se o vinculo e intencional.`;
-  }
 
   const changeEnvironmentAccess = useMutation({
     mutationFn: async ({ id, allowed }: { id: string; allowed: boolean }) => {
@@ -270,7 +249,6 @@ function UsersTab() {
         role: inviteForm.role,
         job_title: inviteForm.job_title || null,
         company_id: inviteForm.company_id || null,
-        primary_team_id: inviteForm.primary_team_id || null,
       });
       // A conta ja nasce ativa (ver descricao do modal) - abre o primeiro
       // vinculo de area assim que o profile existe, preservando o historico
@@ -303,7 +281,6 @@ function UsersTab() {
         full_name: editForm.full_name.trim(),
         job_title: editForm.job_title || null,
         company_id: editForm.company_id || null,
-        primary_team_id: editForm.primary_team_id || null,
         weekly_capacity_hours: editForm.weekly_capacity_hours,
       }).eq('id', editTarget.id);
       if (error) throw error;
@@ -349,7 +326,6 @@ function UsersTab() {
       full_name: p.full_name,
       job_title: p.job_title ?? '',
       company_id: p.company_id ?? '',
-      primary_team_id: p.primary_team_id ?? '',
       weekly_capacity_hours: p.weekly_capacity_hours,
       area_id: p.area_id ?? '',
     });
@@ -533,17 +509,6 @@ function UsersTab() {
               {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
-          <Field label="Equipe">
-            <Select
-              value={inviteForm.primary_team_id}
-              onChange={(e) => setInviteForm((f) => ({
-                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
-              }))}
-            >
-              <option value="">Sem equipe</option>
-              {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
-          </Field>
           <Field
             label="Area" required className="sm:col-span-2"
             hint="Area organizacional principal do colaborador - obrigatoria."
@@ -554,9 +519,6 @@ function UsersTab() {
                 <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
               ))}
             </Select>
-            {teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id) && (
-              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id)}</p>
-            )}
           </Field>
         </div>
       </Modal>
@@ -685,17 +647,6 @@ function UsersTab() {
               {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
-          <Field label="Equipe">
-            <Select
-              value={editForm.primary_team_id}
-              onChange={(e) => setEditForm((f) => ({
-                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
-              }))}
-            >
-              <option value="">Sem equipe</option>
-              {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
-          </Field>
           <Field
             label="Area" className="sm:col-span-2"
             hint={editTarget?.active
@@ -708,9 +659,6 @@ function UsersTab() {
                 <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
               ))}
             </Select>
-            {teamAreaMismatch(editForm.primary_team_id, editForm.area_id) && (
-              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(editForm.primary_team_id, editForm.area_id)}</p>
-            )}
           </Field>
         </div>
       </Modal>
@@ -742,7 +690,7 @@ function UsersTab() {
           <>
             A conta de <b>{deleteTarget?.name}</b> sera excluida permanentemente - esta acao nao pode
             ser desfeita. Projetos, tarefas, riscos e decisoes onde a pessoa era responsavel
-            permanecem, apenas sem responsavel atribuido. Vinculos de equipe, aprovacoes,
+            permanecem, apenas sem responsavel atribuido. Vinculos de area, aprovacoes,
             visualizacoes salvas e preferencias pessoais sao removidos junto - aprovacoes ficam
             registradas na trilha de auditoria mesmo assim.
             <br /><br />
@@ -767,7 +715,7 @@ const fieldTypes: { value: CustomFieldType; label: string }[] = [
   { value: 'lista_unica', label: 'Lista (escolha unica)' },
   { value: 'multipla_escolha', label: 'Multipla escolha' },
   { value: 'usuario', label: 'Usuario' },
-  { value: 'equipe', label: 'Equipe' },
+  { value: 'area', label: 'Area' },
   { value: 'status', label: 'Status' },
   { value: 'url', label: 'URL' },
 ];
@@ -1032,65 +980,6 @@ function TemplatesTab() {
   );
 }
 
-function TeamsTab() {
-  const { can } = useAuth();
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const canManage = can('portfolio.manage');
-  const { data = [], isLoading } = useQuery({ queryKey: ['teams'], queryFn: listTeams });
-  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
-
-  const changeArea = useMutation({
-    mutationFn: ({ teamId, areaId }: { teamId: string; areaId: string }) => updateTeamArea(teamId, areaId || null),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teams'] });
-      toast.success('Area da equipe atualizada', 'A alteracao foi registrada na trilha de auditoria.');
-    },
-    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
-  });
-
-  if (isLoading) return <Spinner />;
-  return (
-    <div className="card overflow-x-auto">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead className="bg-surface-2">
-          <tr>
-            {['Equipe', 'Area (legado, texto livre)', 'Area (estrutural)', 'Capacidade semanal', 'Limite de alocacao'].map((h) => (
-              <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((t) => (
-            <tr key={t.id} className="border-t border-border">
-              <td className="px-3 py-2.5 font-medium">{t.name}</td>
-              <td className="px-3 py-2.5 text-muted">{t.area ?? '—'}</td>
-              <td className="px-3 py-2.5">
-                {canManage ? (
-                  <Select
-                    className="h-8 w-auto py-0 text-xs"
-                    value={t.area_id ?? ''}
-                    onChange={(e) => changeArea.mutate({ teamId: t.id, areaId: e.target.value })}
-                  >
-                    <option value="">Sem area vinculada</option>
-                    {(areas.data ?? []).filter((a) => a.is_active || a.id === t.area_id).map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </Select>
-                ) : (
-                  <span className="text-sm">{(areas.data ?? []).find((a) => a.id === t.area_id)?.name ?? '—'}</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5 tabular-nums">{t.weekly_capacity_hours} h</td>
-              <td className="px-3 py-2.5 tabular-nums">{t.max_allocation_pct}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 const blankBusinessUnit = { company_id: '', code: '', name: '' };
 
@@ -1259,7 +1148,7 @@ function GerenciasTab() {
 }
 
 // ---------------------------------------------------------------------------
-const blankArea = { business_unit_id: '', code: '', name: '', description: '', manager_user_id: '' };
+const blankArea = { business_unit_id: '', code: '', name: '', description: '', manager_user_id: '', max_allocation_pct: '100' };
 
 function AreasTab() {
   const { can } = useAuth();
@@ -1282,7 +1171,6 @@ function AreasTab() {
   const activeProfiles = useQuery({
     queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open || Boolean(editTarget),
   });
-  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams });
 
   const rows = useMemo(() => (areasQuery.data ?? []).filter((a) => {
     if (businessUnitFilter && a.business_unit_id !== businessUnitFilter) return false;
@@ -1300,15 +1188,6 @@ function AreasTab() {
     return map;
   }, [profiles.data]);
 
-  const teamCount = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of teams.data ?? []) {
-      if (!t.area_id) continue;
-      map.set(t.area_id, (map.get(t.area_id) ?? 0) + 1);
-    }
-    return map;
-  }, [teams.data]);
-
   const save = useMutation({
     mutationFn: async () => {
       if (!form.business_unit_id) throw new Error('Selecione a gerencia.');
@@ -1319,6 +1198,7 @@ function AreasTab() {
         name: form.name.trim(),
         description: form.description.trim() || null,
         manager_user_id: form.manager_user_id || null,
+        max_allocation_pct: Number(form.max_allocation_pct) || 100,
       };
       if (editTarget) await updateArea(editTarget.id, input);
       else await createArea(input);
@@ -1348,6 +1228,7 @@ function AreasTab() {
     setForm({
       business_unit_id: a.business_unit_id, code: a.code, name: a.name,
       description: a.description ?? '', manager_user_id: a.manager_user_id ?? '',
+      max_allocation_pct: String(a.max_allocation_pct ?? 100),
     });
     setEditTarget(a);
     setOpen(true);
@@ -1421,7 +1302,7 @@ function AreasTab() {
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          Area e' o nivel organizacional entre Gerencia e Equipe/Colaborador. Cada colaborador ativo
+          Area e' o nivel organizacional entre Gerencia e Colaborador. Cada colaborador ativo
           deve ter uma Area principal vinculada no cadastro de Usuarios.
         </p>
         {canManage && (
@@ -1500,6 +1381,13 @@ function AreasTab() {
               {(activeProfiles.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
             </Select>
           </Field>
+          <Field label="Limite de alocacao (%)" hint="Dispara o alerta de sobrecarga em Recursos & Capacidade.">
+            <Input
+              type="number" min={1} max={200} aria-label="Limite de alocacao"
+              value={form.max_allocation_pct}
+              onChange={(e) => setForm((f) => ({ ...f, max_allocation_pct: e.target.value }))}
+            />
+          </Field>
           <Field label="Descricao" className="sm:col-span-2">
             <Textarea aria-label="Descricao da area" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           </Field>
@@ -1521,7 +1409,7 @@ function AreasTab() {
         confirmLabel={toggleTarget?.is_active ? 'Inativar' : 'Ativar'}
         description={
           toggleTarget?.is_active
-            ? <>Colaboradores e equipes ja vinculados a <b>{toggleTarget?.name}</b> continuam vinculados, mas ela deixa de aparecer como opcao para novos vinculos.</>
+            ? <>Colaboradores ja vinculados a <b>{toggleTarget?.name}</b> continuam vinculados, mas ela deixa de aparecer como opcao para novos vinculos.</>
             : <><b>{toggleTarget?.name}</b> volta a aparecer como opcao para novos vinculos.</>
         }
       />
@@ -1551,18 +1439,6 @@ function AreasTab() {
                 <ul className="max-h-40 divide-y divide-border overflow-y-auto text-sm">
                   {(profiles.data ?? []).filter((p) => p.area_id === linksTarget.id && p.active).map((p) => (
                     <li key={p.id} className="py-1.5">{p.full_name}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div>
-              <p className="mb-1.5 text-xs font-semibold text-muted">Equipes ({teamCount.get(linksTarget.id) ?? 0})</p>
-              {(teams.data ?? []).filter((t) => t.area_id === linksTarget.id).length === 0 ? (
-                <p className="text-xs text-muted">Nenhuma equipe vinculada.</p>
-              ) : (
-                <ul className="max-h-40 divide-y divide-border overflow-y-auto text-sm">
-                  {(teams.data ?? []).filter((t) => t.area_id === linksTarget.id).map((t) => (
-                    <li key={t.id} className="py-1.5">{t.name}</li>
                   ))}
                 </ul>
               )}

@@ -172,32 +172,6 @@ export function consolidateCurve(
     .map(([month, v]) => ({ month, ...v }));
 }
 
-export interface TeamCapacity {
-  team: string; capacity: number; allocated: number; pct: number; overloaded: boolean;
-}
-
-/** Capacidade por equipe no mes corrente; sobrecarga acima de 100%. */
-export function teamCapacity(rows: ResourceCapacity[], referenceMonth: string): TeamCapacity[] {
-  const map = new Map<string, { capacity: number; allocated: number }>();
-  for (const r of rows) {
-    if (r.reference_month !== referenceMonth) continue;
-    const key = r.team_name ?? 'Sem equipe';
-    const acc = map.get(key) ?? { capacity: 0, allocated: 0 };
-    acc.capacity += Number(r.capacity_hours);
-    acc.allocated += Number(r.allocated_hours);
-    map.set(key, acc);
-  }
-  return [...map.entries()]
-    .map(([team, v]) => ({
-      team,
-      capacity: round(v.capacity, 0),
-      allocated: round(v.allocated, 0),
-      pct: v.capacity === 0 ? 0 : round((v.allocated / v.capacity) * 100),
-      overloaded: v.capacity > 0 && v.allocated > v.capacity,
-    }))
-    .sort((a, b) => b.pct - a.pct);
-}
-
 export interface AreaCapacity {
   areaId: string | null;
   area: string;
@@ -212,10 +186,9 @@ export interface AreaCapacity {
 }
 
 /**
- * Capacidade por Area no mes de referencia - mesma agregacao de teamCapacity
- * (soma capacidade e horas alocadas, so' depois divide), so' trocando a
- * chave de agrupamento. Nunca faz media dos percentuais individuais (item
- * 12): utilizacao = soma(alocado) / soma(capacidade) x 100.
+ * Capacidade por Area no mes de referencia: soma capacidade e horas alocadas
+ * de todos os colaboradores da area, so' depois divide. Nunca faz media dos
+ * percentuais individuais: utilizacao = soma(alocado) / soma(capacidade) x 100.
  */
 export function areaCapacity(rows: ResourceCapacity[], referenceMonth: string): AreaCapacity[] {
   const map = new Map<string, {

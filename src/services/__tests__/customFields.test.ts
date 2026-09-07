@@ -21,10 +21,10 @@ describe('toTypedValue', () => {
     expect(toTypedValue('data', '2026-03-10')).toMatchObject({ value_date: '2026-03-10' });
   });
 
-  it('grava referencias de usuario e equipe como uuid', () => {
+  it('grava referencias de usuario e area como uuid', () => {
     const uuid = '11111111-1111-4111-8111-000000000001';
     expect(toTypedValue('usuario', uuid)).toMatchObject({ value_uuid: uuid });
-    expect(toTypedValue('equipe', uuid)).toMatchObject({ value_uuid: uuid });
+    expect(toTypedValue('area', uuid)).toMatchObject({ value_uuid: uuid });
   });
 
   it('grava multipla escolha como array json', () => {

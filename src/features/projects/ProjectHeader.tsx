@@ -123,7 +123,7 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm sm:grid-cols-4">
             <Info label="Sponsor" value={project.sponsor_name ?? '—'} />
             <Info label="Owner" value={project.owner_name ?? '—'} />
-            <Info label="Equipe" value={project.team_name ?? '—'} />
+            <Info label="Area responsavel" value={project.area_name ?? '—'} />
             <Info label="Empresa" value={project.company_name ?? '—'} />
             <Info label="Inicio" value={formatDate(project.start_date)} />
             <Info label="Data-alvo" value={formatDate(project.target_date)} />

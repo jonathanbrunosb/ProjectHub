@@ -30,7 +30,6 @@ vi.mock('@/services/projects', () => ({
   listProfiles: (...args: []) => listProfiles(...args),
   listActiveProfiles: vi.fn(async () => profiles),
   listCompanies: vi.fn(async () => []),
-  listTeams: vi.fn(async () => []),
   listTemplates: vi.fn(async () => []),
 }));
 
@@ -41,7 +40,7 @@ vi.mock('@/services/areas', () => ({
   assignPrimaryArea: (...a: [string, string]) => assignPrimaryArea(...a),
   listBusinessUnits: vi.fn(async () => []),
   createBusinessUnit: vi.fn(), updateBusinessUnit: vi.fn(), setBusinessUnitActive: vi.fn(),
-  createArea: vi.fn(), updateArea: vi.fn(), setAreaActive: vi.fn(), updateTeamArea: vi.fn(),
+  createArea: vi.fn(), updateArea: vi.fn(), setAreaActive: vi.fn(),
 }));
 
 vi.mock('@/services/customFields', () => ({

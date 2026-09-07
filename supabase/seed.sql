@@ -80,12 +80,12 @@ insert into public.business_units (id, company_id, code, name) values
   ('23232323-2323-4323-8323-000000000004','22222222-2222-4222-8222-000000000003','CSC','Centro de Servicos Compartilhados')
 on conflict do nothing;
 
-insert into public.teams (id, name, area, weekly_capacity_hours, max_allocation_pct) values
-  ('24242424-2424-4424-8424-000000000001','Contabilidade Societaria','Contabilidade', 160, 85),
-  ('24242424-2424-4424-8424-000000000002','Fiscal e Tributario','Fiscal', 120, 85),
-  ('24242424-2424-4424-8424-000000000003','Controladoria','Controladoria', 120, 90),
-  ('24242424-2424-4424-8424-000000000004','Automacao e Dados','Tecnologia', 80, 90)
-on conflict (name) do nothing;
+insert into public.areas (id, business_unit_id, code, name, manager_user_id, max_allocation_pct) values
+  ('24242424-2424-4424-8424-000000000001','23232323-2323-4323-8323-000000000001','CTS','Contabilidade Societaria','11111111-1111-4111-8111-000000000001', 85),
+  ('24242424-2424-4424-8424-000000000002','23232323-2323-4323-8323-000000000002','FIS','Fiscal e Tributario','11111111-1111-4111-8111-000000000005', 85),
+  ('24242424-2424-4424-8424-000000000003','23232323-2323-4323-8323-000000000001','CTL','Controladoria','11111111-1111-4111-8111-000000000002', 90),
+  ('24242424-2424-4424-8424-000000000004','23232323-2323-4323-8323-000000000001','AUT','Automacao e Dados', null, 90)
+on conflict (id) do nothing;
 
 insert into public.cost_centers (code, name) values
   ('CC-1001','Contabilidade Corporativa'),
@@ -94,23 +94,30 @@ insert into public.cost_centers (code, name) values
 on conflict (code) do nothing;
 
 -- Papeis e vinculos dos usuarios demo
-update public.profiles set can_switch_environment = true, role = 'admin',         full_name = 'Ana Ribeiro',    job_title = 'Gerente de Contabilidade', company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000001', weekly_capacity_hours = 40 where email = 'admin@pmocontabil.dev';
-update public.profiles set role = 'pmo',           full_name = 'Carlos Menezes', job_title = 'PMO Contabil',             company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000003', weekly_capacity_hours = 40 where email = 'pmo@pmocontabil.dev';
-update public.profiles set role = 'sponsor',       full_name = 'Helena Duarte',  job_title = 'Diretora de Controladoria',company_id = '22222222-2222-4222-8222-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000003', weekly_capacity_hours = 10 where email = 'sponsor@pmocontabil.dev';
-update public.profiles set role = 'project_owner', full_name = 'Rafael Souza',   job_title = 'Coordenador Contabil',     company_id = '22222222-2222-4222-8222-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000001', weekly_capacity_hours = 40 where email = 'owner1@pmocontabil.dev';
-update public.profiles set role = 'project_owner', full_name = 'Juliana Alves',  job_title = 'Coordenadora Fiscal',      company_id = '22222222-2222-4222-8222-000000000002', primary_team_id = '24242424-2424-4424-8424-000000000002', weekly_capacity_hours = 40 where email = 'owner2@pmocontabil.dev';
-update public.profiles set role = 'collaborator',  full_name = 'Marcos Lima',    job_title = 'Analista Contabil Senior', company_id = '22222222-2222-4222-8222-000000000001', primary_team_id = '24242424-2424-4424-8424-000000000004', weekly_capacity_hours = 40 where email = 'colab@pmocontabil.dev';
+update public.profiles set can_switch_environment = true, role = 'admin',         full_name = 'Ana Ribeiro',    job_title = 'Gerente de Contabilidade', company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', weekly_capacity_hours = 40 where email = 'admin@pmocontabil.dev';
+update public.profiles set role = 'pmo',           full_name = 'Carlos Menezes', job_title = 'PMO Contabil',             company_id = '22222222-2222-4222-8222-000000000001', business_unit_id = '23232323-2323-4323-8323-000000000001', weekly_capacity_hours = 40 where email = 'pmo@pmocontabil.dev';
+update public.profiles set role = 'sponsor',       full_name = 'Helena Duarte',  job_title = 'Diretora de Controladoria',company_id = '22222222-2222-4222-8222-000000000001', weekly_capacity_hours = 10 where email = 'sponsor@pmocontabil.dev';
+update public.profiles set role = 'project_owner', full_name = 'Rafael Souza',   job_title = 'Coordenador Contabil',     company_id = '22222222-2222-4222-8222-000000000001', weekly_capacity_hours = 40 where email = 'owner1@pmocontabil.dev';
+update public.profiles set role = 'project_owner', full_name = 'Juliana Alves',  job_title = 'Coordenadora Fiscal',      company_id = '22222222-2222-4222-8222-000000000002', weekly_capacity_hours = 40 where email = 'owner2@pmocontabil.dev';
+update public.profiles set role = 'collaborator',  full_name = 'Marcos Lima',    job_title = 'Analista Contabil Senior', company_id = '22222222-2222-4222-8222-000000000001', weekly_capacity_hours = 40 where email = 'colab@pmocontabil.dev';
 update public.profiles set role = 'auditor',       full_name = 'Patricia Nunes', job_title = 'Auditoria Interna',        company_id = '22222222-2222-4222-8222-000000000001', weekly_capacity_hours = 40 where email = 'auditor@pmocontabil.dev';
 update public.profiles set role = 'viewer',        full_name = 'Bruno Castro',   job_title = 'Analista de Negocios',     company_id = '22222222-2222-4222-8222-000000000003', weekly_capacity_hours = 40 where email = 'consulta@pmocontabil.dev';
 
-update public.teams set manager_id = '11111111-1111-4111-8111-000000000001' where name = 'Contabilidade Societaria';
-update public.teams set manager_id = '11111111-1111-4111-8111-000000000005' where name = 'Fiscal e Tributario';
-update public.teams set manager_id = '11111111-1111-4111-8111-000000000002' where name = 'Controladoria';
-
-insert into public.team_memberships (team_id, profile_id, is_lead, allocation_pct)
-select p.primary_team_id, p.id, p.role in ('admin','pmo'), 100
-  from public.profiles p where p.primary_team_id is not null
-on conflict do nothing;
+-- Vinculo de Area (gatilhos da migration 0020 sincronizam profiles.area_id).
+insert into public.user_area_assignments (user_id, area_id, is_primary, valid_from)
+select p.id, v.area_id, true, current_date
+  from public.profiles p
+  join (values
+    ('admin@pmocontabil.dev',    '24242424-2424-4424-8424-000000000001'::uuid),
+    ('pmo@pmocontabil.dev',      '24242424-2424-4424-8424-000000000003'::uuid),
+    ('sponsor@pmocontabil.dev',  '24242424-2424-4424-8424-000000000003'::uuid),
+    ('owner1@pmocontabil.dev',   '24242424-2424-4424-8424-000000000001'::uuid),
+    ('owner2@pmocontabil.dev',   '24242424-2424-4424-8424-000000000002'::uuid),
+    ('colab@pmocontabil.dev',    '24242424-2424-4424-8424-000000000004'::uuid)
+  ) as v(email, area_id) on v.email = p.email
+ where not exists (
+   select 1 from public.user_area_assignments u where u.user_id = p.id and u.is_primary and u.valid_to is null
+ );
 
 insert into public.portfolios (id, code, name, description, owner_id) values
   ('25252525-2525-4525-8525-000000000001','PTF-CTB','Portfolio Contabilidade Corporativa','Carteira consolidada de iniciativas da Contabilidade','11111111-1111-4111-8111-000000000002')
@@ -204,7 +211,7 @@ insert into public.automation_rules (key, name, event_type, threshold_days, thre
   ('project_stale','Projeto sem atualizacao','project_stale', 14, null, 'media'),
   ('budget_over','Orcamento acima do limite','budget_over', null, 90, 'alta'),
   ('forecast_over_budget','Forecast acima do budget','forecast_over_budget', null, 100, 'alta'),
-  ('team_overloaded','Equipe sobrecarregada','team_overloaded', null, 100, 'alta'),
+  ('area_overloaded','Area sobrecarregada','area_overloaded', null, 100, 'alta'),
   ('decision_deadline','Decisao proxima do prazo','decision_deadline', 5, null, 'alta')
 on conflict (key) do nothing;
 
@@ -219,7 +226,7 @@ begin;
 insert into public.projects (
   id, code, name, portfolio_id, template_id, category, objective, scope, expected_results,
   executive_summary, executive_summary_updated_at,
-  sponsor_id, owner_id, team_id, company_id, priority, status, phase,
+  sponsor_id, owner_id, area_id, company_id, priority, status, phase,
   health, progress_method, start_date, target_date, baseline_start_date, baseline_target_date, evm_enabled
 ) values
   ('31313131-3131-4131-8131-000000000001','CTB-2026-001','IFRS 18 / CPC 51 - Apresentacao e Divulgacao',
@@ -598,14 +605,13 @@ on conflict do nothing;
 -- -----------------------------------------------------------------------------
 -- Alocacao de recursos (gera sobrecarga proposital em parte do time)
 -- -----------------------------------------------------------------------------
-insert into public.resource_allocations (project_id, profile_id, team_id, role_label, period_start, period_end, allocated_hours, allocation_pct)
-select p.id, m.profile_id, pr.primary_team_id, m.role_label,
+insert into public.resource_allocations (project_id, profile_id, role_label, period_start, period_end, allocated_hours, allocation_pct)
+select p.id, m.profile_id, m.role_label,
        date_trunc('month', current_date)::date,
        (date_trunc('month', current_date) + interval '3 month - 1 day')::date,
        a.hours, a.pct
 from public.projects p
 join public.project_members m on m.project_id = p.id
-join public.profiles pr on pr.id = m.profile_id
 join (values
   ('CTB-2026-001','11111111-1111-4111-8111-000000000004'::uuid, 260, 40),
   ('CTB-2026-001','11111111-1111-4111-8111-000000000006'::uuid, 210, 32),

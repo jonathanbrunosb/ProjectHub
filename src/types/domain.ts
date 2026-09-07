@@ -18,7 +18,7 @@ export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
 
 export type CustomFieldType =
   | 'texto' | 'texto_longo' | 'numero' | 'moeda' | 'percentual' | 'data' | 'data_hora'
-  | 'boolean' | 'lista_unica' | 'multipla_escolha' | 'usuario' | 'equipe' | 'status' | 'url';
+  | 'boolean' | 'lista_unica' | 'multipla_escolha' | 'usuario' | 'area' | 'status' | 'url';
 
 export type CustomFieldScope = 'global' | 'template' | 'projeto';
 export type FinancialNature = 'orcado' | 'realizado' | 'comprometido' | 'forecast';
@@ -52,7 +52,6 @@ export interface Profile {
   role: RoleKey;
   company_id: string | null;
   business_unit_id: string | null;
-  primary_team_id: string | null;
   /** Area organizacional atual (ponteiro para o vinculo primario aberto em user_area_assignments). */
   area_id: string | null;
   avatar_url: string | null;
@@ -64,12 +63,8 @@ export interface Profile {
 
 export interface Company { id: string; code: string; name: string; active: boolean }
 export interface BusinessUnit { id: string; company_id: string; code: string; name: string; active: boolean }
-export interface Team {
-  id: string; name: string; area: string | null; area_id: string | null; manager_id: string | null;
-  weekly_capacity_hours: number; max_allocation_pct: number; active: boolean;
-}
 
-/** Dimensao organizacional Area: filha de business_units (Gerencia), mae de teams/profiles. */
+/** Dimensao organizacional Area: filha de business_units (Gerencia), mae de profiles. */
 export interface Area {
   id: string;
   business_unit_id: string;
@@ -78,6 +73,7 @@ export interface Area {
   description: string | null;
   manager_user_id: string | null;
   is_active: boolean;
+  max_allocation_pct: number;
   created_at: string;
   created_by: string | null;
   updated_at: string;
@@ -116,7 +112,8 @@ export interface Project {
   executive_summary_updated_at: string | null;
   sponsor_id: string | null;
   owner_id: string | null;
-  team_id: string | null;
+  /** Area responsavel pelo projeto (opcional - o projeto pode envolver outras areas via alocacoes). */
+  area_id: string | null;
   company_id: string | null;
   priority: Priority;
   status: ProjectStatus;
@@ -154,11 +151,13 @@ export interface ProjectOverview {
   template_id: string | null;
   owner_id: string | null;
   sponsor_id: string | null;
-  team_id: string | null;
+  area_id: string | null;
   company_id: string | null;
   owner_name: string | null;
   sponsor_name: string | null;
-  team_name: string | null;
+  area_name: string | null;
+  business_unit_id: string | null;
+  business_unit_name: string | null;
   company_name: string | null;
   start_date: string | null;
   target_date: string | null;
@@ -282,13 +281,13 @@ export interface Decision {
 }
 
 export interface ResourceAllocation {
-  id: string; project_id: string; profile_id: string; team_id: string | null;
+  id: string; project_id: string; profile_id: string;
   role_label: string | null; period_start: string; period_end: string;
   allocated_hours: number; allocation_pct: number | null;
 }
 
 export interface ResourceCapacity {
-  profile_id: string; full_name: string; team_id: string | null; team_name: string | null;
+  profile_id: string; full_name: string;
   reference_month: string; capacity_hours: number; allocated_hours: number;
   allocation_pct: number; project_count: number;
   /** Area vigente NAQUELE mes de referencia (via user_area_assignments) - nao o vinculo atual. */

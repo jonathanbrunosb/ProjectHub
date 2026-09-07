@@ -9,8 +9,9 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
 import {
-  createProject, listActiveProfiles, listCompanies, listTeams, listTemplates,
+  createProject, listActiveProfiles, listCompanies, listTemplates,
 } from '@/services/projects';
+import { listAreas } from '@/services/areas';
 import { toISODate } from '@/utils/format';
 import { financialModeLabel, priorityLabel } from '@/utils/domain-labels';
 import type { FinancialModuleMode, Priority } from '@/types/domain';
@@ -36,7 +37,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
 
   const [form, setForm] = useState({
     code: '', name: '', template_id: '', category: '', priority: 'media' as Priority,
-    owner_id: '', sponsor_id: '', company_id: '', team_id: '',
+    owner_id: '', sponsor_id: '', company_id: '', area_id: '',
     start_date: toISODate(new Date()), target_date: '', budget: '', objective: '',
     financial_module_mode: 'inherit' as FinancialModuleMode,
     financialModeTouched: false,
@@ -45,7 +46,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
 
   const templates = useQuery({ queryKey: ['templates'], queryFn: listTemplates, enabled: open });
   const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
-  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: open });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas, enabled: open });
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: open });
 
   const set = (key: keyof typeof form, value: string) => {
@@ -88,7 +89,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
         owner_id: form.owner_id || null,
         sponsor_id: form.sponsor_id || null,
         company_id: form.company_id || null,
-        team_id: form.team_id || null,
+        area_id: form.area_id || null,
         start_date: parsed.data.start_date,
         target_date: parsed.data.target_date ?? null,
         budget: parsed.data.budget,
@@ -160,10 +161,10 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
           </Select>
         </Field>
 
-        <Field label="Equipe">
-          <Select value={form.team_id} onChange={(e) => set('team_id', e.target.value)}>
-            <option value="">Sem equipe</option>
-            {teams.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        <Field label="Area responsavel" hint="Quem responde pelo projeto - outras areas podem participar via alocacoes.">
+          <Select value={form.area_id} onChange={(e) => set('area_id', e.target.value)}>
+            <option value="">Sem area definida</option>
+            {areas.data?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </Select>
         </Field>
         <Field label="Empresa">
