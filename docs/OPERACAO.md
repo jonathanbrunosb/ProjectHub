@@ -24,6 +24,7 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `0016_financial_module_flag.sql` | Módulo financeiro opcional: `system_settings` (global), `projects.financial_module_mode` e `project_templates.financial_module_default` (inherit/enabled/disabled), guarda de privilégio, `v_project_overview.financial_effective_enabled` |
 | `0017_goal_indicators.sql` | Indicadores de Metas: `holidays` e dias úteis (`app.is_business_day`/`app.business_days_between`, inexistentes até aqui), `project_goal_settings`, `task_goal_config`, função central `app.calc_delivery_score`, views `v_task_goal_scores`/`v_project_goal_indicator`, fechamento de período (`goal_score_periods`, `close_goal_period`/`reopen_goal_period`) |
 | `0018_attachments_entity_check.sql` | Restringe `attachments.entity` aos mesmos valores já usados por `comments` (defesa em profundidade antes da interface de upload existir) |
+| `0019_service_role_grants.sql` | Restaura os GRANTs de `service_role` no schema `public`. QA estava sem em **todas as 50 tabelas** e PRD tinha em todas — divergência que fazia qualquer Edge Function falhar com `permission denied` ao tocar tabela. Idempotente: no-op onde já existem |
 
 > A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
 > usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
