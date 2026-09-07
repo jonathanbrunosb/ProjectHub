@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '@/app/AuthProvider';
 import { useEnvironment } from '@/app/EnvironmentProvider';
+import { useToast } from '@/components/ui/Toast';
 import { logAppEvent } from '@/lib/supabase/audit';
 import { bridgeEnvironmentLogin } from '@/services/envBridge';
 import type { Environment } from '@/lib/supabase/client';
@@ -20,6 +21,7 @@ import type { Environment } from '@/lib/supabase/client';
 export function useEnvironmentSwitch() {
   const { profile, session } = useAuth();
   const { environment, available, switchEnvironment } = useEnvironment();
+  const toast = useToast();
   const [switching, setSwitching] = useState(false);
 
   const canSwitch = Boolean(profile?.can_switch_environment) && available.length > 1;
@@ -43,16 +45,20 @@ export function useEnvironmentSwitch() {
       setSwitching(true);
       try {
         await bridgeEnvironmentLogin(target, session.access_token);
-      } catch {
+      } catch (err) {
         // Ponte indisponivel (funcao nao implantada/configurada, conta
-        // inativa no destino, etc.) - segue para o cenario reservo abaixo.
+        // inativa no destino, etc.) - segue para o cenario reservo abaixo,
+        // mas avisa o motivo em vez de falhar em silencio (sem isso, o
+        // unico sintoma visivel era cair na tela de login sem explicacao).
+        const message = err instanceof Error ? err.message : 'Motivo desconhecido.';
+        toast.warning('Login automatico no outro ambiente falhou', message);
       } finally {
         setSwitching(false);
       }
     }
 
     switchEnvironment(target);
-  }, [environment, profile?.can_switch_environment, session?.access_token, switchEnvironment]);
+  }, [environment, profile?.can_switch_environment, session?.access_token, switchEnvironment, toast]);
 
   return { environment, available, canSwitch, requestSwitch, switching };
 }
