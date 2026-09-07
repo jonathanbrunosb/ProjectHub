@@ -158,11 +158,20 @@ menu lateral sem cair no cadastro manual do outro lado. Implantada **nos dois
 projetos** (mesmo código nos dois), com duas particularidades em relação às
 outras três funções acima:
 
-1. **Dois segredos extras por projeto, cada um apontando para o OUTRO:**
-   - Em QA: `PEER_SUPABASE_URL` e `PEER_SUPABASE_ANON_KEY` = URL/anon key de **PRD**.
-   - Em PRD: `PEER_SUPABASE_URL` e `PEER_SUPABASE_ANON_KEY` = URL/anon key de **QA**.
-   - Definidos em **Edge Functions → env-switch-login → Secrets** no painel, ou
-     via `supabase secrets set NOME="valor" --project-ref <ref>`.
+1. **Um segredo por projeto, apontando para o OUTRO:**
+   - Em QA: `PEER_SUPABASE_URL` = URL de **PRD**.
+   - Em PRD: `PEER_SUPABASE_URL` = URL de **QA**.
+   - Definido em **Edge Functions → env-switch-login → Secrets** no painel, ou
+     via `supabase secrets set PEER_SUPABASE_URL="https://<ref>.supabase.co" --project-ref <ref>`.
+   - Só a URL é segredo, e é ela a **âncora de confiança**: o token e a permissão
+     de quem pede a troca são validados contra ela, e somente contra ela.
+   - A **anon key** do outro projeto não precisa ser configurada: ela chega no
+     corpo da chamada, vinda do bundle do frontend (onde o build já a injeta
+     correta). Configurá-la à mão como `PEER_SUPABASE_ANON_KEY` ainda funciona
+     como reserva, mas é desnecessário — e foi justamente a fonte de três
+     falhas seguidas em produção, porque um JWT de 200+ caracteres copiado
+     entre janelas chega corrompido com facilidade (caractere invisível
+     substituindo um caractere legítimo, sem nenhum sinal visual).
 
 2. **Verificação de JWT da plataforma DESLIGADA** (`--no-verify-jwt`), nos dois
    projetos:

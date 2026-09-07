@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 interface InvokeError { message: string; context?: { clone: () => { json: () => Promise<unknown> } } }
-const invoke = vi.fn(async (_name: string, _options: { headers: Record<string, string> }) => (
+interface InvokeOptions { headers: Record<string, string>; body: { peer_anon_key?: string } }
+const invoke = vi.fn(async (_name: string, _options: InvokeOptions) => (
   { data: null as { email: string; token: string } | null, error: null as InvokeError | null }
 ));
 const verifyOtp = vi.fn(async (_params: { email: string; token_hash: string; type: string }) => (
@@ -11,8 +12,12 @@ const getSupabaseClient = vi.fn((_env: string) => ({
   functions: { invoke },
   auth: { verifyOtp },
 }));
+const environmentAnonKey = vi.fn((env: string) => `anon-key-${env}`);
 
-vi.mock('@/lib/supabase/client', () => ({ getSupabaseClient: (env: string) => getSupabaseClient(env) }));
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: (env: string) => getSupabaseClient(env),
+  environmentAnonKey: (env: string) => environmentAnonKey(env),
+}));
 
 const { bridgeEnvironmentLogin } = await import('../envBridge');
 
@@ -20,6 +25,7 @@ beforeEach(() => {
   invoke.mockClear();
   verifyOtp.mockClear();
   getSupabaseClient.mockClear();
+  environmentAnonKey.mockClear();
 });
 
 describe('bridgeEnvironmentLogin', () => {
@@ -27,20 +33,30 @@ describe('bridgeEnvironmentLogin', () => {
     invoke.mockResolvedValueOnce({ data: { email: 'ana@empresa.com.br', token: 'hash-123' }, error: null });
     verifyOtp.mockResolvedValueOnce({ data: {}, error: null });
 
-    await bridgeEnvironmentLogin('QA', 'token-origem');
+    await bridgeEnvironmentLogin('PRD', 'QA', 'token-origem');
 
     expect(getSupabaseClient).toHaveBeenCalledWith('QA');
-    expect(invoke).toHaveBeenCalledWith('env-switch-login', {
-      headers: { Authorization: 'Bearer token-origem' },
-    });
     expect(verifyOtp).toHaveBeenCalledWith({
       email: 'ana@empresa.com.br', token_hash: 'hash-123', type: 'email',
     });
   });
 
+  it('envia a chave do ambiente de ORIGEM, nao a do destino', async () => {
+    invoke.mockResolvedValueOnce({ data: { email: 'ana@empresa.com.br', token: 'hash-123' }, error: null });
+    verifyOtp.mockResolvedValueOnce({ data: {}, error: null });
+
+    await bridgeEnvironmentLogin('PRD', 'QA', 'token-origem');
+
+    expect(environmentAnonKey).toHaveBeenCalledWith('PRD');
+    expect(invoke).toHaveBeenCalledWith('env-switch-login', {
+      headers: { Authorization: 'Bearer token-origem' },
+      body: { peer_anon_key: 'anon-key-PRD' },
+    });
+  });
+
   it('lanca erro quando a edge function nao retorna credenciais', async () => {
     invoke.mockResolvedValueOnce({ data: null, error: { message: 'sem permissao' } });
-    await expect(bridgeEnvironmentLogin('PRD', 'token-origem')).rejects.toThrow('sem permissao');
+    await expect(bridgeEnvironmentLogin('QA', 'PRD', 'token-origem')).rejects.toThrow('sem permissao');
     expect(verifyOtp).not.toHaveBeenCalled();
   });
 
@@ -52,13 +68,13 @@ describe('bridgeEnvironmentLogin', () => {
       data: null,
       error: { message: 'Edge Function returned a non-2xx status code', context },
     });
-    await expect(bridgeEnvironmentLogin('QA', 'token-origem'))
+    await expect(bridgeEnvironmentLogin('PRD', 'QA', 'token-origem'))
       .rejects.toThrow('Esta conta nao tem permissao para alternar de ambiente.');
   });
 
   it('lanca erro quando verifyOtp falha', async () => {
     invoke.mockResolvedValueOnce({ data: { email: 'ana@empresa.com.br', token: 'hash-123' }, error: null });
     verifyOtp.mockResolvedValueOnce({ data: null, error: { message: 'token expirado' } });
-    await expect(bridgeEnvironmentLogin('QA', 'token-origem')).rejects.toThrow('token expirado');
+    await expect(bridgeEnvironmentLogin('PRD', 'QA', 'token-origem')).rejects.toThrow('token expirado');
   });
 });

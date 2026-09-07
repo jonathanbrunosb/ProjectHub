@@ -57,6 +57,22 @@ export function configuredEnvironments(): Environment[] {
 }
 
 /**
+ * Chave anon (publica) de um ambiente especifico. Existe para a ponte de troca
+ * de ambiente (`envBridge`) poder informar ao ambiente de destino qual chave
+ * usar para falar com o de origem, em vez de essa chave precisar ser colada a
+ * mao como segredo da Edge Function - um JWT de 200+ caracteres copiado entre
+ * janelas chega corrompido com frequencia (caractere invisivel, quebra de
+ * linha), e a mesma chave ja' vem correta no bundle, pelo build.
+ *
+ * Publicar isso nao afrouxa nada: a chave anon e' publica por definicao (ja'
+ * esta' no bundle, visivel no navegador) e sozinha nao da' acesso a dado algum
+ * - quem autoriza e' a RLS, sempre a partir da sessao do usuario.
+ */
+export function environmentAnonKey(environment: Environment): string | undefined {
+  return config[environment].anonKey;
+}
+
+/**
  * Ambiente assumido quando nao ha preferencia salva (primeiro acesso, ou
  * localStorage limpo por troca de navegador/dispositivo/"limpar dados do
  * site"). PRD vem primeiro porque este e' o dominio corporativo de producao -
