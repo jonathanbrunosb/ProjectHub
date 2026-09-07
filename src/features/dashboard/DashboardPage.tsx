@@ -117,7 +117,7 @@ export function DashboardPage() {
       />
 
       {/* KPIs de execucao */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
         <KpiCard
           label="Projetos ativos" value={loading ? '—' : kpis.active}
           icon={<FolderKanban className="h-4 w-4" />}
@@ -148,11 +148,6 @@ export function DashboardPage() {
           icon={<TrendingUp className="h-4 w-4" />}
           hint="Avanco realizado medio dos projetos ativos, comparado ao planejado."
         />
-        <KpiCard
-          label="Concluidos" value={loading ? '—' : kpis.completed}
-          icon={<CheckCircle2 className="h-4 w-4" />}
-          onClick={() => navigate('/portfolio?status=concluido')}
-        />
       </div>
 
       {/* KPIs financeiros (so quando ha projeto com o modulo ativo no escopo) e de governanca */}
@@ -174,6 +169,11 @@ export function DashboardPage() {
             />
           </>
         )}
+        <KpiCard
+          label="Concluidos" value={loading ? '—' : kpis.completed}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          onClick={() => navigate('/portfolio?status=concluido')}
+        />
         <KpiCard
           label="Riscos criticos" value={loading ? '—' : kpis.criticalRisks} tone="danger"
           icon={<ShieldAlert className="h-4 w-4" />}
