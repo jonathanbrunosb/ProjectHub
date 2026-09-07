@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 interface InvokeError { message: string; context?: { clone: () => { json: () => Promise<unknown> } } }
 interface InvokeOptions { headers: Record<string, string>; body: { peer_anon_key?: string } }
 const invoke = vi.fn(async (_name: string, _options: InvokeOptions) => (
-  { data: null as { email: string; token: string } | null, error: null as InvokeError | null }
+  {
+    data: null as { email: string; token: string; warning?: string } | null,
+    error: null as InvokeError | null,
+  }
 ));
 const verifyOtp = vi.fn(async (_params: { email: string; token_hash: string; type: string }) => (
   { data: {} as Record<string, unknown> | null, error: null as { message: string } | null }
@@ -52,6 +55,18 @@ describe('bridgeEnvironmentLogin', () => {
       headers: { Authorization: 'Bearer token-origem' },
       body: { peer_anon_key: 'anon-key-PRD' },
     });
+  });
+
+  it('devolve a ressalva quando o login funciona mas o perfil nao pode ser ajustado', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { email: 'ana@empresa.com.br', token: 'hash-123', warning: 'perfil nao ajustado' },
+      error: null,
+    });
+    verifyOtp.mockResolvedValueOnce({ data: {}, error: null });
+
+    const resultado = await bridgeEnvironmentLogin('PRD', 'QA', 'token-origem');
+
+    expect(resultado).toEqual({ warning: 'perfil nao ajustado' });
   });
 
   it('lanca erro quando a edge function nao retorna credenciais', async () => {
