@@ -61,7 +61,7 @@ export function KpiCard({
   const card = (
     <div
       className={cn(
-        'card p-4 transition-shadow',
+        'card h-full p-4 transition-shadow',
         onClick && 'cursor-pointer hover:shadow-pop focus-ring',
         className,
       )}
@@ -74,5 +74,5 @@ export function KpiCard({
     </div>
   );
 
-  return hint ? <Tooltip content={hint} className="block">{card}</Tooltip> : card;
+  return hint ? <Tooltip content={hint} className="block h-full">{card}</Tooltip> : card;
 }

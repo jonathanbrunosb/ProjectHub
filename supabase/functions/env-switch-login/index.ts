@@ -254,19 +254,20 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Passo 3: ja existe conta espelhada neste ambiente (destino)?
+    // Passos 3 e 4: conta espelhada neste ambiente + geracao do acesso.
     //
-    // Esta leitura passa pelo PostgREST, entao depende dos GRANTs da tabela.
-    // Se falhar (ex.: a chave de servico do projeto nao esta' sendo aceita como
-    // `service_role` e cai em `anon`, que as migrations revogam), NAO derruba a
-    // ponte: a autorizacao que importa - identidade e can_switch_environment -
-    // ja' foi validada no ambiente de origem, e o passo 4 usa a Auth API, que
-    // nao passa por GRANT nenhum. O que se perde e' acessorio e reversivel: a
-    // checagem de conta inativa aqui e o espelhamento do papel na criacao (a
-    // conta nasce com o papel padrao, que o Admin ajusta depois).
-    // Os dois sao independentes entre si, entao vao juntos: a consulta do perfil
-    // nao precisa terminar para o acesso comecar a ser gerado. Isso corta uma
+    // Sao independentes entre si, entao vao juntos - a consulta do perfil nao
+    // precisa terminar para o acesso comecar a ser gerado, o que corta uma
     // viagem de rede inteira do tempo total da troca.
+    //
+    // A consulta passa pelo PostgREST e depende do GRANT de `service_role` na
+    // tabela (foi exatamente a falta desse GRANT em QA, e nao em PRD, que
+    // causou o "permission denied for table profiles" - ver migration 0019).
+    // Se ela falhar, a ponte NAO cai: a autorizacao que importa (identidade e
+    // can_switch_environment) ja' foi validada na origem, e a geracao do acesso
+    // usa a Auth API, que nao passa por GRANT nenhum. Perde-se apenas o
+    // acessorio: a checagem de conta inativa aqui e o espelhamento do papel na
+    // criacao, que o Admin ajusta depois.
     const [perfilDestino, acesso] = await Promise.all([
       adminClient.from('profiles').select('id, active').eq('email', peerProfile.email).maybeSingle(),
       adminClient.auth.admin.generateLink({ type: 'magiclink', email: peerProfile.email }),

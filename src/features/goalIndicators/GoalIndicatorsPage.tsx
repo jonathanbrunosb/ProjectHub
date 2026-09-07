@@ -2,9 +2,6 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import {
-  Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from 'recharts';
 import { AlertTriangle, CheckCircle2, Clock, Target, TrendingUp } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -12,8 +9,7 @@ import { KpiCard } from '@/components/ui/KpiCard';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable } from '@/components/ui/DataTable';
 import { ChartCard } from '@/components/charts/ChartCard';
-import { ChartTooltip } from '@/components/charts/ChartTooltip';
-import { chartColors } from '@/components/charts/chartTheme';
+import { GoalThermometerGauge } from '@/components/charts/GoalThermometerGauge';
 import { ErrorState, Spinner, EmptyState } from '@/components/ui/Feedback';
 import { useTableState } from '@/hooks/useTableState';
 import { listProjectOverview } from '@/services/projects';
@@ -39,7 +35,6 @@ function scoreLabel(score: number | null): string {
 
 export function GoalIndicatorsPage() {
   useBreadcrumbs([{ label: 'Indicadores de Metas' }]);
-  const colors = chartColors();
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
   const scoresQuery = useQuery({ queryKey: ['goal-scores', 'all'], queryFn: listAllTaskGoalScores });
@@ -65,24 +60,6 @@ export function GoalIndicatorsPage() {
       .filter((s) => s.actual_date == null && s.target_date && s.target_date < today).length;
     return { consolidated, aboveTarget, belowTarget, pendingDeliveries, overdueDeliveries };
   }, [measured, scoresQuery.data]);
-
-  const distribution = useMemo(() => {
-    const buckets = { desafio: 0, meta: 0, abaixo: 0, minimo: 0 };
-    for (const p of measured) {
-      const v = p.goal_indicator_realized ?? p.goal_indicator_projected;
-      if (v == null) continue;
-      if (v >= 15) buckets.desafio += 1;
-      else if (v >= 10) buckets.meta += 1;
-      else if (v > 1) buckets.abaixo += 1;
-      else buckets.minimo += 1;
-    }
-    return [
-      { key: 'desafio', label: 'Desafio', value: buckets.desafio, color: colors.ok },
-      { key: 'meta', label: 'Meta atingida', value: buckets.meta, color: colors.ok },
-      { key: 'abaixo', label: 'Abaixo da Meta', value: buckets.abaixo, color: colors.warn },
-      { key: 'minimo', label: 'Racional minimo', value: buckets.minimo, color: colors.danger },
-    ];
-  }, [measured, colors]);
 
   const columns = useMemo<ColumnDef<ProjectOverview, unknown>[]>(() => [
     {
@@ -179,21 +156,13 @@ export function GoalIndicatorsPage() {
           <div className="mt-4 grid gap-3 lg:grid-cols-3">
             <ChartCard
               className="lg:col-span-1"
-              title="Distribuicao dos projetos"
-              description="Classificacao pela nota atual (realizada ou projetada)"
-              empty={distribution.every((d) => d.value === 0)}
+              title="Indicador consolidado do portfolio"
+              description="Media da nota atual (realizada, ou projetada) entre os projetos mensurados"
+              empty={kpis.consolidated == null}
             >
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={distribution} layout="vertical" margin={{ left: 4, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: colors.muted }} />
-                  <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 11, fill: colors.muted }} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="value" name="Projetos" radius={[0, 3, 3, 0]} maxBarSize={22}>
-                    {distribution.map((d) => <Cell key={d.key} fill={d.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="flex h-[220px] flex-col justify-center px-1">
+                <GoalThermometerGauge value={kpis.consolidated} target={10} challenge={15} />
+              </div>
             </ChartCard>
 
             <div className="lg:col-span-2">

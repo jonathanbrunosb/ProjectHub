@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen, Pencil, Target } from 'lucide-react';
 import { KpiCard } from '@/components/ui/KpiCard';
+import { GoalThermometerGauge } from '@/components/charts/GoalThermometerGauge';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -229,6 +230,23 @@ export function GoalIndicatorTab({ projectId }: { projectId: string }) {
             />
             <KpiCard label="Entregas concluidas" value={indicator?.deliveries_done ?? 0} />
             <KpiCard label="Entregas pendentes" value={indicator?.deliveries_pending ?? 0} />
+          </div>
+
+          <div className="card grid gap-4 p-4 sm:grid-cols-2">
+            <GoalThermometerGauge
+              label="Indicador Realizado"
+              value={indicator?.indicator_realized ?? null}
+              target={settings.target_score}
+              challenge={settings.challenge_score}
+              min={0}
+            />
+            <GoalThermometerGauge
+              label="Indicador Projetado"
+              value={indicator?.indicator_projected ?? null}
+              target={settings.target_score}
+              challenge={settings.challenge_score}
+              min={0}
+            />
           </div>
 
           {settings.weight_mode === 'manual' && !weightCheck.valid && (
