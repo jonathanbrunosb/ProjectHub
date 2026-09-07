@@ -118,14 +118,14 @@ export interface AllocationRow {
   id: string; project_id: string; profile_id: string; team_id: string | null;
   role_label: string | null; period_start: string; period_end: string;
   allocated_hours: number; allocation_pct: number | null;
-  profile: { full_name: string } | null;
+  profile: { full_name: string; area_id: string | null; area: { name: string } | null } | null;
   project: { code: string; name: string } | null;
 }
 
 export async function listAllocations(projectId?: string): Promise<AllocationRow[]> {
   let query = supabase
     .from('resource_allocations')
-    .select('id,project_id,profile_id,team_id,role_label,period_start,period_end,allocated_hours,allocation_pct,profile:profiles(full_name),project:projects(code,name)')
+    .select('id,project_id,profile_id,team_id,role_label,period_start,period_end,allocated_hours,allocation_pct,profile:profiles(full_name,area_id,area:areas(name)),project:projects(code,name)')
     .order('period_start', { ascending: false });
   if (projectId) query = query.eq('project_id', projectId);
   const { data, error } = await query;

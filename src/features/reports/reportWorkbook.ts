@@ -4,7 +4,7 @@ import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listAuditLog } from '@/services/governance';
 import { listAllTaskGoalScores } from '@/services/goalIndicators';
-import { portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboard/selectors';
+import { areaCapacity, portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboard/selectors';
 import { daysBetween } from '@/utils/format';
 import { auditActionLabel, projectStatusLabel } from '@/utils/domain-labels';
 
@@ -297,6 +297,7 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
       const capacity = await listCapacity();
       const rows = capacity.filter((r) => r.reference_month === month);
       const byTeam = teamCapacity(capacity, month);
+      const byArea = areaCapacity(capacity, month);
       return [
         {
           name: 'Resumo',
@@ -313,17 +314,35 @@ export async function buildReportSheets(reportKey: string): Promise<SheetSpec[]>
           })),
         },
         {
+          name: 'Por area',
+          columns: [
+            { key: 'area', header: 'Area', type: 'text' },
+            { key: 'gerencia', header: 'Gerencia', type: 'text' },
+            { key: 'colaboradores', header: 'Colaboradores', type: 'integer' },
+            { key: 'capacidade', header: 'Capacidade (h)', type: 'number' },
+            { key: 'alocado', header: 'Alocado (h)', type: 'number' },
+            { key: 'alocacao', header: 'Alocacao', type: 'percent' },
+            { key: 'situacao', header: 'Situacao', type: 'text' },
+          ],
+          rows: byArea.map((a) => ({
+            area: a.area, gerencia: a.businessUnit ?? '', colaboradores: a.collaborators,
+            capacidade: a.capacity, alocado: a.allocated, alocacao: a.pct,
+            situacao: a.status === 'danger' ? 'Sobrecarga' : a.status === 'warn' ? 'Atencao' : 'Adequada',
+          })),
+        },
+        {
           name: 'Colaboradores',
           columns: [
             { key: 'colaborador', header: 'Colaborador', type: 'text' },
             { key: 'equipe', header: 'Equipe', type: 'text' },
+            { key: 'area', header: 'Area', type: 'text' },
             { key: 'capacidade', header: 'Capacidade (h)', type: 'number' },
             { key: 'alocado', header: 'Alocado (h)', type: 'number' },
             { key: 'alocacao', header: 'Alocacao', type: 'percent' },
             { key: 'projetos', header: 'Projetos', type: 'integer' },
           ],
           rows: rows.map((r) => ({
-            colaborador: r.full_name, equipe: r.team_name ?? '',
+            colaborador: r.full_name, equipe: r.team_name ?? '', area: r.area_name ?? '',
             capacidade: Number(r.capacity_hours), alocado: Number(r.allocated_hours),
             alocacao: Number(r.allocation_pct), projetos: r.project_count,
           })),

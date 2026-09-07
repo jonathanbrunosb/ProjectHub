@@ -40,6 +40,7 @@ export function TaskList({
   const [mode, setMode] = useState<Mode>('lista');
   const [scale, setScale] = useState<GanttScale>('semana');
   const [statusFilter, setStatusFilter] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [editing, setEditing] = useState<TaskWithContext | null>(null);
   const [creating, setCreating] = useState(false);
   const table = useTableState(module);
@@ -50,9 +51,16 @@ export function TaskList({
     enabled: Boolean(projectId) && (mode === 'gantt' || mode === 'timeline'),
   });
 
+  const areaOptions = useMemo(
+    () => [...new Set(tasks.map((t) => t.assignee?.area?.name).filter((v): v is string => Boolean(v)))].sort(),
+    [tasks],
+  );
+
   const filtered = useMemo(
-    () => (statusFilter ? tasks.filter((t) => t.status === statusFilter) : tasks),
-    [tasks, statusFilter],
+    () => tasks
+      .filter((t) => !statusFilter || t.status === statusFilter)
+      .filter((t) => !areaFilter || t.assignee?.area?.name === areaFilter),
+    [tasks, statusFilter, areaFilter],
   );
 
   const columns = useMemo<ColumnDef<TaskWithContext, unknown>[]>(() => {
@@ -76,6 +84,8 @@ export function TaskList({
             <span className="truncate text-sm">{row.original.assignee?.full_name ?? '—'}</span>
           </span>
         ) },
+      { id: 'area', accessorFn: (r) => r.assignee?.area?.name ?? '', header: 'Area', meta: { label: 'Area' }, size: 160,
+        cell: ({ getValue }) => <span className="text-sm text-muted">{(getValue() as string) || '—'}</span> },
       { accessorKey: 'status', header: 'Status', meta: { label: 'Status' }, size: 130,
         cell: ({ row }) => <TaskStatusBadge status={row.original.status} /> },
       { accessorKey: 'priority', header: 'Prioridade', meta: { label: 'Prioridade' }, size: 110,
@@ -170,6 +180,13 @@ export function TaskList({
           {Object.entries(taskStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
 
+        {areaOptions.length > 0 && (
+          <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por area do responsavel">
+            <option value="">Todas as areas</option>
+            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </Select>
+        )}
+
         {(mode === 'gantt' || mode === 'timeline') && (
           <Select className="w-auto" value={scale} onChange={(e) => setScale(e.target.value as GanttScale)} aria-label="Escala">
             {(['dia', 'semana', 'mes', 'trimestre', 'ano'] as GanttScale[]).map((s) => (
@@ -195,6 +212,7 @@ export function TaskList({
           groupableColumns={[
             { id: 'status', label: 'Status' },
             { id: 'assignee', label: 'Responsavel' },
+            { id: 'area', label: 'Area' },
             ...(showProjectColumn ? [{ id: 'project', label: 'Projeto' }] : []),
           ]}
           exportFileName="tarefas"
