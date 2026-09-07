@@ -60,6 +60,27 @@ interface PeerProfile {
   can_switch_environment: boolean;
 }
 
+/**
+ * PEER_SUPABASE_URL e' colado a mao (painel do Supabase) e o erro mais comum
+ * e' colar a URL de exemplo do REST (".../rest/v1/") em vez da URL base do
+ * projeto - o que quebra silenciosamente todo fetch feito a partir dela (vira
+ * ".../rest/v1//auth/v1/user"). `new URL(...).origin` normaliza para so' o
+ * esquema+host+porta, aceitando qualquer sufixo/barra final colado por engano.
+ */
+function normalizePeerUrl(raw: string): string {
+  return new URL(raw).origin;
+}
+
+/** Erro de rede/URL malformada (fetch nunca completa) - nao confundir com uma
+ * resposta HTTP de erro (401/403 reais), que tem seu proprio tratamento. */
+async function fetchPeer(url: string, headers: Record<string, string>): Promise<Response> {
+  try {
+    return await fetch(url, { headers });
+  } catch (e) {
+    throw new Error(`Nao foi possivel contatar o ambiente de origem (${url}): ${e instanceof Error ? e.message : e}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
   if (req.method !== 'POST') return json(req, { error: 'Metodo nao suportado.' }, 405);
@@ -70,19 +91,28 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const peerUrl = Deno.env.get('PEER_SUPABASE_URL');
+    const rawPeerUrl = Deno.env.get('PEER_SUPABASE_URL');
     const peerAnonKey = Deno.env.get('PEER_SUPABASE_ANON_KEY');
 
-    if (!supabaseUrl || !serviceRoleKey || !peerUrl || !peerAnonKey) {
+    if (!supabaseUrl || !serviceRoleKey || !rawPeerUrl || !peerAnonKey) {
       return json(req, { error: 'Funcao mal configurada: variaveis de ambiente ausentes (confira PEER_SUPABASE_URL/PEER_SUPABASE_ANON_KEY).' }, 500);
     }
 
+    let peerUrl: string;
+    try {
+      peerUrl = normalizePeerUrl(rawPeerUrl);
+    } catch {
+      return json(req, { error: `PEER_SUPABASE_URL invalida: "${rawPeerUrl}" nao e' uma URL.` }, 500);
+    }
+
     // Passo 1: quem e' a pessoa no ambiente de ORIGEM (valida o token la', nao aqui).
-    const peerUserResp = await fetch(`${peerUrl}/auth/v1/user`, {
-      headers: { apikey: peerAnonKey, Authorization: sourceAuthHeader },
-    });
+    const peerUserResp = await fetchPeer(`${peerUrl}/auth/v1/user`, { apikey: peerAnonKey, Authorization: sourceAuthHeader });
     if (!peerUserResp.ok) {
-      return json(req, { error: 'Sessao invalida ou expirada no ambiente de origem.' }, 401);
+      const detail = await peerUserResp.text().catch(() => '');
+      return json(req, {
+        error: `Sessao invalida ou expirada no ambiente de origem (HTTP ${peerUserResp.status} em ${peerUrl}/auth/v1/user`
+          + `${detail ? ` - ${detail.slice(0, 200)}` : ''}). Confira PEER_SUPABASE_URL/PEER_SUPABASE_ANON_KEY.`,
+      }, 401);
     }
     const peerUser = await peerUserResp.json() as { id?: string; email?: string };
     if (!peerUser?.id || !peerUser?.email) {
@@ -92,12 +122,16 @@ Deno.serve(async (req) => {
     // Passo 2: confirma, no profile de ORIGEM, que a troca esta autorizada.
     // A leitura usa o proprio token de quem chamou (RLS de origem), nunca uma
     // service_role de fora - o profile de origem so' pode falar por si mesmo.
-    const peerProfileResp = await fetch(
+    const peerProfileResp = await fetchPeer(
       `${peerUrl}/rest/v1/profiles?id=eq.${peerUser.id}&select=email,full_name,role,active,can_switch_environment`,
-      { headers: { apikey: peerAnonKey, Authorization: sourceAuthHeader } },
+      { apikey: peerAnonKey, Authorization: sourceAuthHeader },
     );
     if (!peerProfileResp.ok) {
-      return json(req, { error: 'Falha ao validar permissao no ambiente de origem.' }, 401);
+      const detail = await peerProfileResp.text().catch(() => '');
+      return json(req, {
+        error: `Falha ao validar permissao no ambiente de origem (HTTP ${peerProfileResp.status}`
+          + `${detail ? ` - ${detail.slice(0, 200)}` : ''}).`,
+      }, 401);
     }
     const [peerProfile] = await peerProfileResp.json() as PeerProfile[];
     if (!peerProfile) {
