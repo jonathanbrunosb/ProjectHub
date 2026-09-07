@@ -8,7 +8,7 @@ const invoke = vi.fn(async (_name: string, _options: InvokeOptions) => (
     error: null as InvokeError | null,
   }
 ));
-const verifyOtp = vi.fn(async (_params: { email: string; token_hash: string; type: string }) => (
+const verifyOtp = vi.fn(async (_params: { token_hash: string; type: string }) => (
   { data: {} as Record<string, unknown> | null, error: null as { message: string } | null }
 ));
 const getSupabaseClient = vi.fn((_env: string) => ({
@@ -39,9 +39,10 @@ describe('bridgeEnvironmentLogin', () => {
     await bridgeEnvironmentLogin('PRD', 'QA', 'token-origem');
 
     expect(getSupabaseClient).toHaveBeenCalledWith('QA');
-    expect(verifyOtp).toHaveBeenCalledWith({
-      email: 'ana@empresa.com.br', token_hash: 'hash-123', type: 'email',
-    });
+    // Sem `email`: o GoTrue recusa `token_hash` acompanhado de e-mail com
+    // "Only the token_hash and type should be provided".
+    expect(verifyOtp).toHaveBeenCalledWith({ token_hash: 'hash-123', type: 'email' });
+    expect(verifyOtp.mock.calls[0][0]).not.toHaveProperty('email');
   });
 
   it('envia a chave do ambiente de ORIGEM, nao a do destino', async () => {

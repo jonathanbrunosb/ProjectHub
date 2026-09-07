@@ -55,8 +55,11 @@ export async function bridgeEnvironmentLogin(
     throw new Error('A ponte de ambiente nao retornou credenciais validas.');
   }
 
+  // `token_hash` e `email`+`token` sao formas mutuamente exclusivas no GoTrue:
+  // mandar o e-mail junto do hash faz a API recusar com "Only the token_hash
+  // and type should be provided". Como o hash ja' identifica a conta, o e-mail
+  // vem so' para conferencia/diagnostico, nunca para a verificacao.
   const { error: verifyError } = await targetClient.auth.verifyOtp({
-    email: data.email,
     token_hash: data.token,
     type: 'email',
   });
