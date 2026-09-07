@@ -125,6 +125,10 @@ export function LoginPage() {
               />
             </Field>
 
+            <p className="text-right text-sm">
+              <Link to="/esqueci-senha" className="text-brand hover:underline">Esqueceu sua senha?</Link>
+            </p>
+
             {error && (
               <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
                 {error}
