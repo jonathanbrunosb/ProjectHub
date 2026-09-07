@@ -161,7 +161,7 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 // --- Cadastros de apoio (usados em formularios e filtros) -------------------
 
 const PROFILE_COLUMNS =
-  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
+  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
 
 /**
  * Todos os perfis, ativos ou nao. Uso: gestao de usuarios (Admin precisa ver
@@ -194,7 +194,7 @@ export async function listActiveProfiles(): Promise<Profile[]> {
 export async function listTeams(): Promise<Team[]> {
   const { data, error } = await supabase
     .from('teams')
-    .select('id,name,area,manager_id,weekly_capacity_hours,max_allocation_pct,active')
+    .select('id,name,area,area_id,manager_id,weekly_capacity_hours,max_allocation_pct,active')
     .eq('active', true)
     .order('name');
   if (error) throw error;
