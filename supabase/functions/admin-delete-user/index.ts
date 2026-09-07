@@ -18,7 +18,7 @@
 // captura `old_data` em `application_audit_log` antes da linha sumir, entao
 // o fato historico ("fulano aprovou X em tal data") sobrevive mesmo que a
 // linha viva em `approvals` seja removida.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 
 function cors(req: Request): Record<string, string> {
   return {
