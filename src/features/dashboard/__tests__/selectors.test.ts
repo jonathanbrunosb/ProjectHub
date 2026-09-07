@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  consolidateCurve, groupCount, healthDistribution, portfolioKpis,
+  areaCapacity, consolidateCurve, groupCount, healthDistribution, portfolioKpis,
   progressByProject, teamCapacity,
 } from '../selectors';
 import type { ProjectOverview, ResourceCapacity } from '@/types/domain';
@@ -159,12 +159,22 @@ describe('consolidateCurve', () => {
   });
 });
 
+function capacityRow(overrides: Partial<ResourceCapacity> = {}): ResourceCapacity {
+  return {
+    profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil',
+    reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 0,
+    allocation_pct: 0, project_count: 0,
+    area_id: null, area_name: null, business_unit_id: null, business_unit_name: null,
+    ...overrides,
+  };
+}
+
 describe('teamCapacity', () => {
   const rows: ResourceCapacity[] = [
-    { profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 120, allocation_pct: 120, project_count: 3 },
-    { profile_id: '2', full_name: 'B', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 60, allocation_pct: 60, project_count: 1 },
-    { profile_id: '3', full_name: 'C', team_id: 't2', team_name: 'Fiscal', reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 50, allocation_pct: 50, project_count: 1 },
-    { profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-07-01', capacity_hours: 100, allocated_hours: 300, allocation_pct: 300, project_count: 5 },
+    capacityRow({ profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', allocated_hours: 120, allocation_pct: 120, project_count: 3 }),
+    capacityRow({ profile_id: '2', full_name: 'B', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', allocated_hours: 60, allocation_pct: 60, project_count: 1 }),
+    capacityRow({ profile_id: '3', full_name: 'C', team_id: 't2', team_name: 'Fiscal', reference_month: '2026-06-01', allocated_hours: 50, allocation_pct: 50, project_count: 1 }),
+    capacityRow({ profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-07-01', allocated_hours: 300, allocation_pct: 300, project_count: 5 }),
   ];
 
   it('agrega por equipe apenas o mes de referencia', () => {
@@ -181,5 +191,66 @@ describe('teamCapacity', () => {
     const result = teamCapacity(rows, '2026-07-01');
     expect(result[0].overloaded).toBe(true);
     expect(result[0].pct).toBe(300);
+  });
+});
+
+describe('areaCapacity', () => {
+  const rows: ResourceCapacity[] = [
+    capacityRow({
+      profile_id: '1', full_name: 'A', reference_month: '2026-06-01', allocated_hours: 120, allocation_pct: 120,
+      area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa',
+    }),
+    capacityRow({
+      profile_id: '2', full_name: 'B', reference_month: '2026-06-01', allocated_hours: 60, allocation_pct: 60,
+      area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa',
+    }),
+    capacityRow({
+      profile_id: '3', full_name: 'C', reference_month: '2026-06-01', allocated_hours: 50, allocation_pct: 50,
+      area_id: 'a2', area_name: 'Ativos e Imobilizado', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa',
+    }),
+    capacityRow({
+      profile_id: '4', full_name: 'D', reference_month: '2026-06-01', allocated_hours: 0, allocation_pct: 0,
+      area_id: null, area_name: null, business_unit_id: null, business_unit_name: null,
+    }),
+  ];
+
+  it('agrega por area somando capacidade e horas antes de dividir - nunca media de percentuais', () => {
+    const result = areaCapacity(rows, '2026-06-01');
+    const geral = result.find((r) => r.area === 'Contabilidade Geral')!;
+    // (120+60) / (100+100) x 100 = 90 - nao a media simples de 120% e 60% (que daria 90 tambem
+    // por coincidencia matematica aqui, entao o proximo teste usa numeros que desmentem a media).
+    expect(geral.capacity).toBe(200);
+    expect(geral.allocated).toBe(180);
+    expect(geral.pct).toBe(90);
+    expect(geral.collaborators).toBe(2);
+  });
+
+  it('a utilizacao da area diverge da media simples quando as capacidades dos colaboradores diferem', () => {
+    const desiguais: ResourceCapacity[] = [
+      capacityRow({ profile_id: '1', reference_month: '2026-06-01', capacity_hours: 40, allocated_hours: 40, allocation_pct: 100, area_id: 'a1', area_name: 'Area X' }),
+      capacityRow({ profile_id: '2', reference_month: '2026-06-01', capacity_hours: 160, allocated_hours: 40, allocation_pct: 25, area_id: 'a1', area_name: 'Area X' }),
+    ];
+    const result = areaCapacity(desiguais, '2026-06-01');
+    // Media simples dos percentuais seria (100+25)/2 = 62.5 - a regra correta e' 80/200 = 40.
+    expect(result[0].pct).toBe(40);
+  });
+
+  it('conta colaboradores sobrecarregados e agrupa quem esta sem area', () => {
+    const result = areaCapacity(rows, '2026-06-01');
+    const geral = result.find((r) => r.area === 'Contabilidade Geral')!;
+    expect(geral.overloadedCollaborators).toBe(1);
+    expect(geral.status).toBe('warn');
+    const semArea = result.find((r) => r.areaId === null)!;
+    expect(semArea.area).toBe('Sem area definida');
+    expect(semArea.collaborators).toBe(1);
+  });
+
+  it('nao divide por zero quando a area nao tem capacidade cadastrada', () => {
+    const zerada: ResourceCapacity[] = [
+      capacityRow({ profile_id: '1', reference_month: '2026-06-01', capacity_hours: 0, allocated_hours: 0, allocation_pct: 0, area_id: 'a1', area_name: 'Area Zerada' }),
+    ];
+    const result = areaCapacity(zerada, '2026-06-01');
+    expect(result[0].pct).toBe(0);
+    expect(result[0].status).toBe('ok');
   });
 });

@@ -291,6 +291,9 @@ export interface ResourceCapacity {
   profile_id: string; full_name: string; team_id: string | null; team_name: string | null;
   reference_month: string; capacity_hours: number; allocated_hours: number;
   allocation_pct: number; project_count: number;
+  /** Area vigente NAQUELE mes de referencia (via user_area_assignments) - nao o vinculo atual. */
+  area_id: string | null; area_name: string | null;
+  business_unit_id: string | null; business_unit_name: string | null;
 }
 
 export interface CriticalCalendarEvent {

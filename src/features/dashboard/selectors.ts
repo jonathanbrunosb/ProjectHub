@@ -198,6 +198,62 @@ export function teamCapacity(rows: ResourceCapacity[], referenceMonth: string): 
     .sort((a, b) => b.pct - a.pct);
 }
 
+export interface AreaCapacity {
+  areaId: string | null;
+  area: string;
+  businessUnit: string | null;
+  collaborators: number;
+  capacity: number;
+  allocated: number;
+  available: number;
+  pct: number;
+  overloadedCollaborators: number;
+  status: 'ok' | 'warn' | 'danger';
+}
+
+/**
+ * Capacidade por Area no mes de referencia - mesma agregacao de teamCapacity
+ * (soma capacidade e horas alocadas, so' depois divide), so' trocando a
+ * chave de agrupamento. Nunca faz media dos percentuais individuais (item
+ * 12): utilizacao = soma(alocado) / soma(capacidade) x 100.
+ */
+export function areaCapacity(rows: ResourceCapacity[], referenceMonth: string): AreaCapacity[] {
+  const map = new Map<string, {
+    areaId: string | null; area: string; businessUnit: string | null;
+    capacity: number; allocated: number; collaborators: Set<string>; overloaded: number;
+  }>();
+  for (const r of rows) {
+    if (r.reference_month !== referenceMonth) continue;
+    const key = r.area_id ?? '__sem_area__';
+    const acc = map.get(key) ?? {
+      areaId: r.area_id, area: r.area_name ?? 'Sem area definida', businessUnit: r.business_unit_name,
+      capacity: 0, allocated: 0, collaborators: new Set<string>(), overloaded: 0,
+    };
+    acc.capacity += Number(r.capacity_hours);
+    acc.allocated += Number(r.allocated_hours);
+    acc.collaborators.add(r.profile_id);
+    if (Number(r.allocation_pct) > 100) acc.overloaded += 1;
+    map.set(key, acc);
+  }
+  return [...map.values()]
+    .map((v) => {
+      const pct = v.capacity === 0 ? 0 : round((v.allocated / v.capacity) * 100);
+      return {
+        areaId: v.areaId,
+        area: v.area,
+        businessUnit: v.businessUnit,
+        collaborators: v.collaborators.size,
+        capacity: round(v.capacity, 0),
+        allocated: round(v.allocated, 0),
+        available: round(Math.max(0, v.capacity - v.allocated), 0),
+        pct,
+        overloadedCollaborators: v.overloaded,
+        status: pct > 100 ? 'danger' as const : pct > 85 ? 'warn' as const : 'ok' as const,
+      };
+    })
+    .sort((a, b) => b.pct - a.pct);
+}
+
 export function currentMonthKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
 }
