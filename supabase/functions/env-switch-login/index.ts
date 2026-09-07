@@ -68,7 +68,29 @@ interface PeerProfile {
  * esquema+host+porta, aceitando qualquer sufixo/barra final colado por engano.
  */
 function normalizePeerUrl(raw: string): string {
-  return new URL(raw).origin;
+  return new URL(raw.trim()).origin;
+}
+
+/**
+ * Segredo colado via terminal/painel pode trazer espaco ou quebra de linha
+ * invisivel na ponta (`.trim()` resolve a maioria dos casos sem avisar
+ * ninguem). Se sobrar caractere fora do intervalo ASCII/Latin-1 (aspas
+ * curvas, espaco especial etc.), o proprio `fetch` rejeita o header com um
+ * erro generico de JavaScript ("nao e' um ByteString valido") - dificil de
+ * associar a causa. Valida aqui e nomeia exatamente qual variavel esta suja.
+ */
+function sanitizeHeaderSecret(name: string, raw: string): string {
+  const value = raw.trim();
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 255) {
+      throw new Error(
+        `${name} contem um caractere invalido (posicao ${i + 1}) - provavelmente um espaco ou aspas `
+        + 'especiais colados junto do valor. Copie de novo direto do painel do Supabase (Project Settings > API) '
+        + 'e cole em um editor de texto simples antes de salvar o segredo, para garantir que nao sobrou nada extra.',
+      );
+    }
+  }
+  return value;
 }
 
 /** Erro de rede/URL malformada (fetch nunca completa) - nao confundir com uma
@@ -99,14 +121,18 @@ Deno.serve(async (req) => {
     }
 
     let peerUrl: string;
+    let safeAnonKey: string;
+    let safeAuthHeader: string;
     try {
       peerUrl = normalizePeerUrl(rawPeerUrl);
-    } catch {
-      return json(req, { error: `PEER_SUPABASE_URL invalida: "${rawPeerUrl}" nao e' uma URL.` }, 500);
+      safeAnonKey = sanitizeHeaderSecret('PEER_SUPABASE_ANON_KEY', peerAnonKey);
+      safeAuthHeader = sanitizeHeaderSecret('Authorization (token do ambiente de origem)', sourceAuthHeader);
+    } catch (e) {
+      return json(req, { error: e instanceof Error ? e.message : 'Configuracao invalida.' }, 500);
     }
 
     // Passo 1: quem e' a pessoa no ambiente de ORIGEM (valida o token la', nao aqui).
-    const peerUserResp = await fetchPeer(`${peerUrl}/auth/v1/user`, { apikey: peerAnonKey, Authorization: sourceAuthHeader });
+    const peerUserResp = await fetchPeer(`${peerUrl}/auth/v1/user`, { apikey: safeAnonKey, Authorization: safeAuthHeader });
     if (!peerUserResp.ok) {
       const detail = await peerUserResp.text().catch(() => '');
       return json(req, {
@@ -124,7 +150,7 @@ Deno.serve(async (req) => {
     // service_role de fora - o profile de origem so' pode falar por si mesmo.
     const peerProfileResp = await fetchPeer(
       `${peerUrl}/rest/v1/profiles?id=eq.${peerUser.id}&select=email,full_name,role,active,can_switch_environment`,
-      { apikey: peerAnonKey, Authorization: sourceAuthHeader },
+      { apikey: safeAnonKey, Authorization: safeAuthHeader },
     );
     if (!peerProfileResp.ok) {
       const detail = await peerProfileResp.text().catch(() => '');
