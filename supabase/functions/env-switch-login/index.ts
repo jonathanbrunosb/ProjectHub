@@ -8,12 +8,15 @@
 // funcionava se ela tivesse cadastro manual feito nos dois lados.
 //
 // O MESMO codigo desta funcao e' implantado nos DOIS projetos (QA e PRD). Cada
-// implantacao roda como o ambiente de DESTINO da troca e usa dois segredos
-// extras (alem dos que o Supabase ja injeta em toda funcao):
-//   PEER_SUPABASE_URL       - URL do OUTRO projeto (a origem da troca)
-//   PEER_SUPABASE_ANON_KEY  - anon key do OUTRO projeto (publica, sem risco)
-// Ex.: na implantacao em QA, PEER_* aponta para PRD; na implantacao em PRD,
-// PEER_* aponta para QA.
+// implantacao roda como o ambiente de DESTINO da troca e precisa de UM segredo
+// extra (alem dos que o Supabase ja injeta em toda funcao):
+//   PEER_SUPABASE_URL - URL do OUTRO projeto (a origem da troca). Ex.: na
+//   implantacao em QA aponta para PRD; na implantacao em PRD aponta para QA.
+//
+// A chave anon do outro projeto NAO precisa mais ser configurada como segredo:
+// ela chega no corpo da chamada, vinda do bundle do frontend (onde ja' e'
+// correta, injetada pelo build). PEER_SUPABASE_ANON_KEY continua sendo aceita
+// como reserva, para instalacoes que ja' a tenham configurada.
 //
 // Fluxo:
 //  1. Quem chama manda, no header Authorization, o token de sessao que tem no
@@ -124,10 +127,24 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const rawPeerUrl = Deno.env.get('PEER_SUPABASE_URL');
-    const peerAnonKey = Deno.env.get('PEER_SUPABASE_ANON_KEY');
 
-    if (!supabaseUrl || !serviceRoleKey || !rawPeerUrl || !peerAnonKey) {
-      return json(req, { error: 'Funcao mal configurada: variaveis de ambiente ausentes (confira PEER_SUPABASE_URL/PEER_SUPABASE_ANON_KEY).' }, 500);
+    if (!supabaseUrl || !serviceRoleKey || !rawPeerUrl) {
+      return json(req, { error: 'Funcao mal configurada: variaveis de ambiente ausentes (confira PEER_SUPABASE_URL).' }, 500);
+    }
+
+    // A chave anon do ambiente de origem vem preferencialmente de quem chamou:
+    // o frontend ja' a tem correta pelo build, enquanto cola-la a mao como
+    // segredo se mostrou fragil (JWT longo copiado entre janelas chega com
+    // caractere invisivel). Isso NAO afrouxa a seguranca: PEER_SUPABASE_URL
+    // continua so' no servidor e e' contra ela, e somente contra ela, que o
+    // token e a permissao sao validados - uma chave anon errada aqui apenas
+    // faz a requisicao falhar, nunca forja identidade. O segredo continua
+    // valendo como reserva, para quem ja' o tinha configurado corretamente.
+    const body = await req.json().catch(() => ({})) as { peer_anon_key?: string };
+    const peerAnonKey = body?.peer_anon_key || Deno.env.get('PEER_SUPABASE_ANON_KEY');
+
+    if (!peerAnonKey) {
+      return json(req, { error: 'Chave do ambiente de origem ausente (nem no corpo da chamada, nem em PEER_SUPABASE_ANON_KEY).' }, 500);
     }
 
     let peerUrl: string;
@@ -135,7 +152,7 @@ Deno.serve(async (req) => {
     let safeAuthHeader: string;
     try {
       peerUrl = normalizePeerUrl(rawPeerUrl);
-      safeAnonKey = sanitizeApiKey('PEER_SUPABASE_ANON_KEY', peerAnonKey);
+      safeAnonKey = sanitizeApiKey('A chave do ambiente de origem', peerAnonKey);
       safeAuthHeader = sanitizeAuthHeader(sourceAuthHeader);
     } catch (e) {
       return json(req, { error: e instanceof Error ? e.message : 'Configuracao invalida.' }, 500);

@@ -1,4 +1,4 @@
-import { getSupabaseClient, type Environment } from '@/lib/supabase/client';
+import { environmentAnonKey, getSupabaseClient, type Environment } from '@/lib/supabase/client';
 
 /**
  * FunctionsHttpError carrega a resposta JSON da propria funcao no `context` -
@@ -24,17 +24,29 @@ async function extractFunctionErrorMessage(error: unknown): Promise<string> {
  * identidade perante o ambiente de DESTINO, que devolve um magic-link ja'
  * validado (nunca enviado por e-mail) para trocar por uma sessao real ali.
  *
+ * A chave anon do ambiente de ORIGEM vai no corpo da chamada porque ela ja'
+ * chega correta aqui pelo build, enquanto cola-la a mao como segredo da funcao
+ * se mostrou fragil (JWT longo copiado entre janelas chega com caractere
+ * invisivel e derruba a ponte). Nao afrouxa nada: e' chave publica, e quem
+ * ancora a confianca do lado do servidor e' PEER_SUPABASE_URL, que continua
+ * sendo segredo da funcao - a validacao do token so' acontece contra ela.
+ *
  * Se falhar por qualquer motivo (funcao nao implantada/configurada ainda,
  * conta sem permissao, ambiente de destino fora do ar), quem chama deve cair
  * no fluxo manual de login/cadastro - esse e' o "cenario reservo", nunca o
  * caminho padrao.
  */
-export async function bridgeEnvironmentLogin(target: Environment, sourceAccessToken: string): Promise<void> {
+export async function bridgeEnvironmentLogin(
+  source: Environment, target: Environment, sourceAccessToken: string,
+): Promise<void> {
   const targetClient = getSupabaseClient(target);
 
   const { data, error } = await targetClient.functions.invoke<{ email: string; token: string }>(
     'env-switch-login',
-    { headers: { Authorization: `Bearer ${sourceAccessToken}` } },
+    {
+      headers: { Authorization: `Bearer ${sourceAccessToken}` },
+      body: { peer_anon_key: environmentAnonKey(source) },
+    },
   );
   if (error) throw new Error(await extractFunctionErrorMessage(error));
   if (!data?.email || !data?.token) {
