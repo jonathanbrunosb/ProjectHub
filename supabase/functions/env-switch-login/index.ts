@@ -68,29 +68,39 @@ interface PeerProfile {
  * esquema+host+porta, aceitando qualquer sufixo/barra final colado por engano.
  */
 function normalizePeerUrl(raw: string): string {
-  return new URL(raw.trim()).origin;
+  // Mesma sujeira de copia que atinge as chaves (ver sanitizeApiKey) tambem
+  // chega aqui - remove o que nao e' ASCII imprimivel antes de interpretar.
+  return new URL(raw.replace(/[^\x20-\x7E]/g, '').trim()).origin;
 }
 
 /**
- * Segredo colado via terminal/painel pode trazer espaco ou quebra de linha
- * invisivel na ponta (`.trim()` resolve a maioria dos casos sem avisar
- * ninguem). Se sobrar caractere fora do intervalo ASCII/Latin-1 (aspas
- * curvas, espaco especial etc.), o proprio `fetch` rejeita o header com um
- * erro generico de JavaScript ("nao e' um ByteString valido") - dificil de
- * associar a causa. Valida aqui e nomeia exatamente qual variavel esta suja.
+ * Chave de API (JWT `eyJ...` ou `sb_publishable_...`) colada a mao no painel ou
+ * no terminal costuma vir suja: quebra de linha na ponta, espaco no meio de uma
+ * linha que o terminal quebrou, ou caractere invisivel de formatacao (zero-width
+ * space, marca de direcao de texto) inserido pelo navegador ao copiar uma string
+ * longa sem espacos. Qualquer um deles quebra o `fetch` com um erro generico de
+ * JavaScript ("nao e' um ByteString valido"), longe da causa real.
+ *
+ * O alfabeto desses dois formatos e' fechado ([A-Za-z0-9._-]), entao tudo que
+ * cai fora dele e' lixo de copia e pode ser removido com seguranca - a funcao se
+ * conserta sozinha em vez de exigir que alguem recole o valor perfeito. So' o que
+ * sobra depois da limpeza e' validado, ai' sim com mensagem especifica.
  */
-function sanitizeHeaderSecret(name: string, raw: string): string {
-  const value = raw.trim();
-  for (let i = 0; i < value.length; i += 1) {
-    if (value.charCodeAt(i) > 255) {
-      throw new Error(
-        `${name} contem um caractere invalido (posicao ${i + 1}) - provavelmente um espaco ou aspas `
-        + 'especiais colados junto do valor. Copie de novo direto do painel do Supabase (Project Settings > API) '
-        + 'e cole em um editor de texto simples antes de salvar o segredo, para garantir que nao sobrou nada extra.',
-      );
-    }
+function sanitizeApiKey(name: string, raw: string): string {
+  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '');
+  if (!cleaned) {
+    throw new Error(`${name} esta vazia (ou so' com caracteres invalidos) apos a limpeza.`);
   }
-  return value;
+  return cleaned;
+}
+
+/**
+ * O header Authorization e' "Bearer <jwt>" - tem um espaco legitimo no meio,
+ * entao nao da' para usar a limpeza da chave de API aqui. Remove so' o que o
+ * `fetch` recusa (fora de ASCII) e as pontas.
+ */
+function sanitizeAuthHeader(raw: string): string {
+  return raw.replace(/[^\x20-\x7E]/g, '').trim();
 }
 
 /** Erro de rede/URL malformada (fetch nunca completa) - nao confundir com uma
@@ -125,8 +135,8 @@ Deno.serve(async (req) => {
     let safeAuthHeader: string;
     try {
       peerUrl = normalizePeerUrl(rawPeerUrl);
-      safeAnonKey = sanitizeHeaderSecret('PEER_SUPABASE_ANON_KEY', peerAnonKey);
-      safeAuthHeader = sanitizeHeaderSecret('Authorization (token do ambiente de origem)', sourceAuthHeader);
+      safeAnonKey = sanitizeApiKey('PEER_SUPABASE_ANON_KEY', peerAnonKey);
+      safeAuthHeader = sanitizeAuthHeader(sourceAuthHeader);
     } catch (e) {
       return json(req, { error: e instanceof Error ? e.message : 'Configuracao invalida.' }, 500);
     }
