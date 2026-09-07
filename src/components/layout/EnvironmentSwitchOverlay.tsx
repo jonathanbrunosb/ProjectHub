@@ -1,8 +1,8 @@
 import { createPortal } from 'react-dom';
-import { FlaskConical, Loader2, ShieldCheck } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { environmentShortLabel, type Environment } from '@/lib/supabase/client';
 
-const icone: Record<Environment, typeof FlaskConical> = { QA: FlaskConical, PRD: ShieldCheck };
+const icone: Record<Environment, string> = { QA: '/env-icon-qa.png', PRD: '/env-icon-prd.png' };
 
 /**
  * Cobre a tela enquanto a troca de ambiente acontece.
@@ -17,8 +17,6 @@ const icone: Record<Environment, typeof FlaskConical> = { QA: FlaskConical, PRD:
 export function EnvironmentSwitchOverlay({ target }: { target: Environment | null }) {
   if (!target) return null;
 
-  const Icone = icone[target];
-
   return createPortal(
     <div
       role="status"
@@ -27,15 +25,7 @@ export function EnvironmentSwitchOverlay({ target }: { target: Environment | nul
       className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/70 backdrop-blur-sm"
     >
       <div className="mx-6 w-full max-w-sm rounded-2xl border border-border bg-surface px-8 py-9 text-center shadow-pop">
-        <div
-          className={
-            target === 'QA'
-              ? 'mx-auto grid h-14 w-14 place-items-center rounded-full bg-warn/15 ring-1 ring-inset ring-warn/30 text-warn'
-              : 'mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand/15 ring-1 ring-inset ring-brand/30 text-brand'
-          }
-        >
-          <Icone className="h-7 w-7" aria-hidden />
-        </div>
+        <img src={icone[target]} alt="" aria-hidden className="mx-auto h-24 w-24 object-contain" />
 
         <p className="mt-5 text-xs uppercase tracking-wider text-muted">Entrando em</p>
         <p className="mt-0.5 text-lg font-semibold leading-tight text-fg">{environmentShortLabel[target]}</p>
