@@ -44,7 +44,8 @@ export function useEnvironmentSwitch() {
     if (session?.access_token) {
       setSwitching(true);
       try {
-        await bridgeEnvironmentLogin(environment, target, session.access_token);
+        const { warning } = await bridgeEnvironmentLogin(environment, target, session.access_token);
+        if (warning) toast.warning('Ambiente trocado, com ressalva', warning);
       } catch (err) {
         // Ponte indisponivel (funcao nao implantada/configurada, conta
         // inativa no destino, etc.) - segue para o cenario reservo abaixo,

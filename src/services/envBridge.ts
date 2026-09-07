@@ -38,10 +38,12 @@ async function extractFunctionErrorMessage(error: unknown): Promise<string> {
  */
 export async function bridgeEnvironmentLogin(
   source: Environment, target: Environment, sourceAccessToken: string,
-): Promise<void> {
+): Promise<{ warning?: string }> {
   const targetClient = getSupabaseClient(target);
 
-  const { data, error } = await targetClient.functions.invoke<{ email: string; token: string }>(
+  const { data, error } = await targetClient.functions.invoke<
+    { email: string; token: string; warning?: string }
+  >(
     'env-switch-login',
     {
       headers: { Authorization: `Bearer ${sourceAccessToken}` },
@@ -59,4 +61,8 @@ export async function bridgeEnvironmentLogin(
     type: 'email',
   });
   if (verifyError) throw verifyError;
+
+  // Login funcionou, mas a funcao sinalizou algo que o Admin precisa saber
+  // (ex.: nao conseguiu ler/ajustar o perfil no ambiente de destino).
+  return { warning: data.warning };
 }

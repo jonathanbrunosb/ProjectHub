@@ -106,6 +106,24 @@ function sanitizeAuthHeader(raw: string): string {
   return raw.replace(/[^\x20-\x7E]/g, '').trim();
 }
 
+/**
+ * Descreve a chave de servico do proprio projeto SEM expo-la: so' o papel e o
+ * `ref` declarados no payload (chave legada e' um JWT; a nova e' opaca). Serve
+ * para diagnosticar de um lado do outro um "permission denied" - se o papel nao
+ * for `service_role`, o problema e' a chave, nao os GRANTs do banco.
+ */
+function describeServiceKey(key: string): string {
+  const partes = key.split('.');
+  if (partes.length !== 3) return `formato nao-JWT (comeca com "${key.slice(0, 12)}...")`;
+  try {
+    const payload = JSON.parse(atob(partes[1].replace(/-/g, '+').replace(/_/g, '/'))) as
+      { role?: string; ref?: string };
+    return `role=${payload.role ?? '?'}, ref=${payload.ref ?? '?'}`;
+  } catch {
+    return 'JWT ilegivel';
+  }
+}
+
 /** Erro de rede/URL malformada (fetch nunca completa) - nao confundir com uma
  * resposta HTTP de erro (401/403 reais), que tem seu proprio tratamento. */
 async function fetchPeer(url: string, headers: Record<string, string>): Promise<Response> {
@@ -200,15 +218,21 @@ Deno.serve(async (req) => {
     });
 
     // Passo 3: ja existe conta espelhada neste ambiente (destino)?
+    //
+    // Esta leitura passa pelo PostgREST, entao depende dos GRANTs da tabela.
+    // Se falhar (ex.: a chave de servico do projeto nao esta' sendo aceita como
+    // `service_role` e cai em `anon`, que as migrations revogam), NAO derruba a
+    // ponte: a autorizacao que importa - identidade e can_switch_environment -
+    // ja' foi validada no ambiente de origem, e o passo 4 usa a Auth API, que
+    // nao passa por GRANT nenhum. O que se perde e' acessorio e reversivel: a
+    // checagem de conta inativa aqui e o espelhamento do papel na criacao (a
+    // conta nasce com o papel padrao, que o Admin ajusta depois).
     const { data: existingProfile, error: existingError } = await adminClient
       .from('profiles')
       .select('id, active')
       .eq('email', peerProfile.email)
       .maybeSingle();
 
-    if (existingError) {
-      return json(req, { error: `Falha ao consultar o ambiente de destino: ${existingError.message}` }, 500);
-    }
     if (existingProfile && !existingProfile.active) {
       return json(req, { error: 'Esta conta esta inativa neste ambiente.' }, 403);
     }
@@ -220,13 +244,25 @@ Deno.serve(async (req) => {
       email: peerProfile.email,
     });
     if (linkError || !link?.properties?.hashed_token) {
-      return json(req, { error: linkError?.message ?? 'Falha ao gerar o acesso neste ambiente.' }, 500);
+      // Se a leitura do profile tambem falhou, o denominador comum e' a chave de
+      // servico deste projeto - por isso o diagnostico dela vem junto aqui.
+      const pista = existingError
+        ? ` (a leitura do profile tambem falhou: "${existingError.message}"`
+          + ` - chave de servico deste ambiente: ${describeServiceKey(serviceRoleKey)})`
+        : '';
+      return json(req, {
+        error: `${linkError?.message ?? 'Falha ao gerar o acesso neste ambiente.'}${pista}`,
+      }, 500);
     }
 
     // So' na primeira vez (conta acabou de ser criada pelo generateLink acima):
     // espelha papel e permissao de troca. Depois disso, o ambiente de destino
     // e' dono da propria configuracao - a ponte nunca mais sobrescreve.
-    if (!existingProfile) {
+    //
+    // `existingError` significa que nao da' para saber se a conta ja' existia,
+    // entao espelhar seria um palpite que pode sobrescrever configuracao feita
+    // a mao no destino - melhor deixar como esta' e devolver o aviso.
+    if (!existingProfile && !existingError) {
       await adminClient
         .from('profiles')
         .update({
@@ -238,7 +274,16 @@ Deno.serve(async (req) => {
         .eq('email', peerProfile.email);
     }
 
-    return json(req, { email: peerProfile.email, token: link.properties.hashed_token }, 200);
+    return json(req, {
+      email: peerProfile.email,
+      token: link.properties.hashed_token,
+      // Sucesso com ressalva: o login vai funcionar, mas o papel da conta neste
+      // ambiente pode precisar de ajuste manual pelo Admin.
+      warning: existingError
+        ? `Login liberado, mas nao foi possivel ler/ajustar o perfil neste ambiente `
+          + `("${existingError.message}" - chave de servico: ${describeServiceKey(serviceRoleKey)}).`
+        : undefined,
+    }, 200);
   } catch (e) {
     return json(req, { error: e instanceof Error ? e.message : 'Erro interno na funcao.' }, 500);
   }
