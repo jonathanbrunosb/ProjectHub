@@ -5,17 +5,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="ProjectHub - gestao integrada de projetos para a Contabilidade." />
     <title>ProjectHub | Gestão Integrada de Projetos</title>
+
+    <!--
+      Seguranca HTTP na camada do documento.
+
+      O ideal e' entregar estas politicas como CABECALHOS HTTP - so' assim
+      valem tambem para respostas que nao sao HTML e so' assim funcionam
+      diretivas como frame-ancestors, HSTS, X-Frame-Options e
+      Permissions-Policy. O GitHub Pages, onde este app e' publicado hoje,
+      nao permite configurar cabecalhos, entao a meta abaixo cobre o que e'
+      possivel pelo documento, e o restante depende de um proxy/CDN na frente
+      (ver docs/SEGURANCA-HTTP.md).
+
+      Origens autorizadas (justificativa completa em docs/SEGURANCA-HTTP.md):
+      - Supabase QA e PRD: o MESMO bundle atende os dois ambientes (a troca e'
+        client-side), entao as duas origens precisam constar aqui.
+      - Google Fonts: folha de estilo (googleapis) e arquivos .woff2 (gstatic).
+      - style-src-attr 'unsafe-inline': atributos style={{...}} do React. Nao
+        libera <style> nem folhas externas, e atributo style nao executa script.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        base-uri 'self';
+        object-src 'none';
+        script-src 'self';
+        style-src 'self' https://fonts.googleapis.com;
+        style-src-attr 'unsafe-inline';
+        font-src 'self' https://fonts.gstatic.com;
+        img-src 'self' data: blob: https://mhmlcnylugoutzadiwww.supabase.co https://anjdrbvftudnxddwexpm.supabase.co;
+        connect-src 'self' https://mhmlcnylugoutzadiwww.supabase.co wss://mhmlcnylugoutzadiwww.supabase.co https://anjdrbvftudnxddwexpm.supabase.co wss://anjdrbvftudnxddwexpm.supabase.co;
+        worker-src 'self' blob:;
+        frame-src 'none';
+        form-action 'self';
+        upgrade-insecure-requests;
+      "
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script>
-      // Aplica o tema antes da hidratacao para evitar flash.
-      try {
-        var t = localStorage.getItem('pmo.theme');
-        var d = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.classList.toggle('dark', d);
-      } catch (e) {}
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
