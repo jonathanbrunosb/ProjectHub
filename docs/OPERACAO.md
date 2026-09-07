@@ -173,7 +173,16 @@ outras três funções acima:
      entre janelas chega corrompido com facilidade (caractere invisível
      substituindo um caractere legítimo, sem nenhum sinal visual).
 
-2. **Verificação de JWT da plataforma DESLIGADA** (`--no-verify-jwt`), nos dois
+2. **Versão do supabase-js**: as Edge Functions importam `@2.115.0` ou superior.
+   Versões anteriores a isso enviam a chave de serviço como `Bearer`, o que só
+   funciona com as chaves legadas (JWT). Com as **novas chaves do Supabase**
+   (`sb_secret_…` / `sb_publishable_…`), que não são JWT, o PostgREST não
+   consegue lê-las, trata a requisição como `anon` — revogado em
+   `0011_rls.sql` — e devolve `permission denied for table <tabela>`, mesmo com
+   a chave correta. A Auth API continua funcionando nesse cenário, o que torna
+   o sintoma confuso: gerar acesso funciona, ler tabela não.
+
+3. **Verificação de JWT da plataforma DESLIGADA** (`--no-verify-jwt`), nos dois
    projetos:
    ```
    supabase functions deploy env-switch-login --no-verify-jwt --project-ref <ref-qa>

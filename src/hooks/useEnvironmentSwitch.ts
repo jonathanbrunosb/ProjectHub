@@ -4,7 +4,7 @@ import { useEnvironment } from '@/app/EnvironmentProvider';
 import { useToast } from '@/components/ui/Toast';
 import { logAppEvent } from '@/lib/supabase/audit';
 import { bridgeEnvironmentLogin } from '@/services/envBridge';
-import type { Environment } from '@/lib/supabase/client';
+import { environmentShortLabel, type Environment } from '@/lib/supabase/client';
 
 /**
  * Une permissao (perfil) e estado (ambiente) para a troca controlada.
@@ -14,20 +14,24 @@ import type { Environment } from '@/lib/supabase/client';
  * sem conta e sessao validas no projeto de destino, nao ha acesso a dado
  * nenhum, independentemente do que a interface permita clicar. A ponte
  * (`bridgeEnvironmentLogin`) e' o que estabelece essa sessao automaticamente
- * para quem tem `can_switch_environment`; se ela falhar por qualquer motivo,
- * a troca segue mesmo assim e a pessoa cai no login/cadastro manual do
- * ambiente de destino - o "cenario reservo", nunca o caminho padrao.
+ * para quem tem `can_switch_environment`; se ela falhar, a troca segue mesmo
+ * assim e a pessoa cai no login manual do ambiente de destino - caminho de
+ * excecao, nunca o padrao.
+ *
+ * `switchingTo` existe para a interface poder dizer PARA ONDE esta indo
+ * enquanto espera: a troca recarrega os dados da tela inteira, entao sem esse
+ * retorno visivel a espera parece travamento.
  */
 export function useEnvironmentSwitch() {
   const { profile, session } = useAuth();
   const { environment, available, switchEnvironment } = useEnvironment();
   const toast = useToast();
-  const [switching, setSwitching] = useState(false);
+  const [switchingTo, setSwitchingTo] = useState<Environment | null>(null);
 
   const canSwitch = Boolean(profile?.can_switch_environment) && available.length > 1;
 
   const requestSwitch = useCallback(async (target: Environment) => {
-    if (target === environment) return;
+    if (target === environment || switchingTo) return;
 
     if (!profile?.can_switch_environment) {
       // Auditado no ambiente de origem, o unico onde ha sessao valida.
@@ -41,25 +45,43 @@ export function useEnvironmentSwitch() {
       data: { from_environment: environment, to_environment: target },
     });
 
+    let ressalva: string | undefined;
+    let precisouDeLoginManual = false;
+
     if (session?.access_token) {
-      setSwitching(true);
+      setSwitchingTo(target);
       try {
-        const { warning } = await bridgeEnvironmentLogin(environment, target, session.access_token);
-        if (warning) toast.warning('Ambiente trocado, com ressalva', warning);
+        ({ warning: ressalva } = await bridgeEnvironmentLogin(environment, target, session.access_token));
       } catch (err) {
-        // Ponte indisponivel (funcao nao implantada/configurada, conta
-        // inativa no destino, etc.) - segue para o cenario reservo abaixo,
-        // mas avisa o motivo em vez de falhar em silencio (sem isso, o
-        // unico sintoma visivel era cair na tela de login sem explicacao).
-        const message = err instanceof Error ? err.message : 'Motivo desconhecido.';
-        toast.warning('Login automatico no outro ambiente falhou', message);
+        precisouDeLoginManual = true;
+        // A mensagem ja vem pronta para leitura humana (a funcao mantem o
+        // detalhe tecnico nos proprios logs). O console guarda o original para
+        // quem estiver depurando, sem poluir a tela de quem so quer trabalhar.
+        console.error('[troca de ambiente] ponte indisponivel:', err);
+        toast.warning(
+          'Entre novamente para continuar',
+          err instanceof Error ? err.message : 'Nao foi possivel entrar automaticamente no outro ambiente.',
+        );
       } finally {
-        setSwitching(false);
+        setSwitchingTo(null);
       }
     }
 
     switchEnvironment(target);
-  }, [environment, profile?.can_switch_environment, session?.access_token, switchEnvironment, toast]);
 
-  return { environment, available, canSwitch, requestSwitch, switching };
+    if (!precisouDeLoginManual) {
+      const destino = environmentShortLabel[target];
+      if (ressalva) toast.warning(`Voce esta em ${destino}`, ressalva);
+      else toast.success(`Voce esta em ${destino}`);
+    }
+  }, [environment, profile?.can_switch_environment, session?.access_token, switchEnvironment, switchingTo, toast]);
+
+  return {
+    environment,
+    available,
+    canSwitch,
+    requestSwitch,
+    switchingTo,
+    switching: switchingTo !== null,
+  };
 }

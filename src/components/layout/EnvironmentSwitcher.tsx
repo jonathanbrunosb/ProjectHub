@@ -1,8 +1,9 @@
-import { Lock } from 'lucide-react';
+import { Loader2, Lock } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { EnvironmentBadge } from '@/components/ui/EnvironmentBadge';
 import { useEnvironmentSwitch } from '@/hooks/useEnvironmentSwitch';
+import { EnvironmentSwitchOverlay } from './EnvironmentSwitchOverlay';
 import { ENVIRONMENTS, isEnvironmentConfigured, environmentShortLabel } from '@/lib/supabase/client';
 
 /**
@@ -11,12 +12,13 @@ import { ENVIRONMENTS, isEnvironmentConfigured, environmentShortLabel } from '@/
  * nunca e' escondida, apenas a acao de trocar.
  */
 export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
-  const { environment, canSwitch, requestSwitch, switching } = useEnvironmentSwitch();
+  const { environment, canSwitch, requestSwitch, switching, switchingTo } = useEnvironmentSwitch();
 
   if (collapsed) {
     return (
       <div className="flex justify-center border-b border-white/10 px-2 py-3">
         <EnvironmentBadge compact />
+        <EnvironmentSwitchOverlay target={switchingTo} />
       </div>
     );
   }
@@ -49,7 +51,12 @@ export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
                     : 'text-nav-muted hover:text-white',
                 )}
               >
-                {env}
+                {switchingTo === env ? (
+                  <span className="flex items-center justify-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    {env}
+                  </span>
+                ) : env}
               </button>
             );
 
@@ -70,8 +77,10 @@ export function EnvironmentSwitcher({ collapsed }: { collapsed: boolean }) {
       )}
 
       <p className="mt-1.5 text-[10px] leading-snug text-nav-muted">
-        {switching ? 'Alternando ambiente...' : environmentShortLabel[environment]}
+        {environmentShortLabel[environment]}
       </p>
+
+      <EnvironmentSwitchOverlay target={switchingTo} />
     </div>
   );
 }

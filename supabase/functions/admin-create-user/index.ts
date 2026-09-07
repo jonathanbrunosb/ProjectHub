@@ -15,7 +15,7 @@
 // versao do Edge Runtime e, quando nao resolve, a funcao quebra na carga.
 // Nesse caso a plataforma responde 500 SEM cabecalho CORS algum, e o
 // navegador reporta como erro de CORS - mascarando a causa real.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 
 // Reflete os cabecalhos que o navegador pediu no preflight. Assim a funcao
 // nunca mais quebra porque o cliente passou a mandar um header novo.
