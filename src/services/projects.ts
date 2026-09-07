@@ -1,11 +1,11 @@
 import { supabase } from '@/lib/supabase/client';
 import type {
-  Project, ProjectOverview, Profile, Team, Company, ProjectTemplate, Priority, FinancialModuleMode,
+  Project, ProjectOverview, Profile, Company, ProjectTemplate, Priority, FinancialModuleMode,
 } from '@/types/domain';
 
 const PROJECT_COLUMNS =
   'id,code,name,portfolio_id,template_id,category,objective,scope,expected_results,' +
-  'executive_summary,executive_summary_updated_at,sponsor_id,owner_id,team_id,company_id,' +
+  'executive_summary,executive_summary_updated_at,sponsor_id,owner_id,area_id,company_id,' +
   'priority,status,phase,health,health_is_manual,health_override_reason,health_overridden_at,' +
   'progress_method,progress_planned,progress_actual,start_date,target_date,' +
   'baseline_start_date,baseline_target_date,actual_end_date,evm_enabled,financial_module_mode,' +
@@ -50,7 +50,7 @@ export interface CreateProjectInput {
   owner_id: string | null;
   sponsor_id: string | null;
   company_id: string | null;
-  team_id: string | null;
+  area_id: string | null;
   start_date: string;
   target_date: string | null;
   budget: number | null;
@@ -74,7 +74,7 @@ export async function createProject(input: CreateProjectInput): Promise<string> 
       p_owner_id: input.owner_id,
       p_sponsor_id: input.sponsor_id,
       p_company_id: input.company_id,
-      p_team_id: input.team_id,
+      p_area_id: input.area_id,
       p_category: input.category,
       p_priority: input.priority,
       p_budget: input.budget,
@@ -94,7 +94,7 @@ export async function createProject(input: CreateProjectInput): Promise<string> 
       owner_id: input.owner_id,
       sponsor_id: input.sponsor_id,
       company_id: input.company_id,
-      team_id: input.team_id,
+      area_id: input.area_id,
       start_date: input.start_date,
       target_date: input.target_date,
       baseline_start_date: input.start_date,
@@ -164,7 +164,7 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 // --- Cadastros de apoio (usados em formularios e filtros) -------------------
 
 const PROFILE_COLUMNS =
-  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
+  'id,email,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
 
 /**
  * Todos os perfis, ativos ou nao. Uso: gestao de usuarios (Admin precisa ver
@@ -192,16 +192,6 @@ export async function listActiveProfiles(): Promise<Profile[]> {
     .order('full_name');
   if (error) throw error;
   return (data ?? []) as unknown as Profile[];
-}
-
-export async function listTeams(): Promise<Team[]> {
-  const { data, error } = await supabase
-    .from('teams')
-    .select('id,name,area,area_id,manager_id,weekly_capacity_hours,max_allocation_pct,active')
-    .eq('active', true)
-    .order('name');
-  if (error) throw error;
-  return (data ?? []) as unknown as Team[];
 }
 
 export async function listCompanies(): Promise<Company[]> {

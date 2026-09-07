@@ -8,7 +8,6 @@ export interface CreateUserInput {
   job_title?: string | null;
   company_id?: string | null;
   business_unit_id?: string | null;
-  primary_team_id?: string | null;
 }
 
 export interface CreateUserResult {

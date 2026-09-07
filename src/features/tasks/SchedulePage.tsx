@@ -20,7 +20,7 @@ export function SchedulePage() {
   useBreadcrumbs([{ label: 'Cronograma Corporativo' }]);
   const navigate = useNavigate();
   const [scale, setScale] = useState<GanttScale>('mes');
-  const [filters, setFilters] = useState({ category: '', owner: '', team: '', health: '', status: '', company: '' });
+  const [filters, setFilters] = useState({ category: '', owner: '', area: '', health: '', status: '', company: '' });
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
   const milestonesQuery = useQuery({ queryKey: ['milestones', 'all'], queryFn: () => listMilestones() });
@@ -31,7 +31,7 @@ export function SchedulePage() {
   const options = useMemo(() => ({
     categories: [...new Set(projects.map((p) => p.category))].sort(),
     owners: [...new Set(projects.map((p) => p.owner_name).filter(Boolean))].sort() as string[],
-    teams: [...new Set(projects.map((p) => p.team_name).filter(Boolean))].sort() as string[],
+    areas: [...new Set(projects.map((p) => p.area_name).filter(Boolean))].sort() as string[],
     companies: [...new Set(projects.map((p) => p.company_name).filter(Boolean))].sort() as string[],
   }), [projects]);
 
@@ -39,7 +39,7 @@ export function SchedulePage() {
     () => projects.filter((p) =>
       (!filters.category || p.category === filters.category)
       && (!filters.owner || p.owner_name === filters.owner)
-      && (!filters.team || p.team_name === filters.team)
+      && (!filters.area || p.area_name === filters.area)
       && (!filters.health || p.health === filters.health)
       && (!filters.status || p.status === filters.status)
       && (!filters.company || p.company_name === filters.company)),
@@ -112,9 +112,9 @@ export function SchedulePage() {
           <option value="">Todos os owners</option>
           {options.owners.map((o) => <option key={o} value={o}>{o}</option>)}
         </Select>
-        <Select className="w-auto" value={filters.team} onChange={(e) => setFilters((f) => ({ ...f, team: e.target.value }))} aria-label="Equipe">
-          <option value="">Todas as equipes</option>
-          {options.teams.map((t) => <option key={t} value={t}>{t}</option>)}
+        <Select className="w-auto" value={filters.area} onChange={(e) => setFilters((f) => ({ ...f, area: e.target.value }))} aria-label="Area">
+          <option value="">Todas as areas</option>
+          {options.areas.map((t) => <option key={t} value={t}>{t}</option>)}
         </Select>
         <Select className="w-auto" value={filters.company} onChange={(e) => setFilters((f) => ({ ...f, company: e.target.value }))} aria-label="Empresa">
           <option value="">Todas as empresas</option>

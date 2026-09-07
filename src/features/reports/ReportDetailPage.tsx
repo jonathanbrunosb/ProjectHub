@@ -14,7 +14,7 @@ import { listProjectOverview } from '@/services/projects';
 import { listRisks, listActionPlans } from '@/services/risks';
 import { listTasks, listMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listAuditLog } from '@/services/governance';
-import { portfolioKpis, currentMonthKey, teamCapacity } from '@/features/dashboard/selectors';
+import { portfolioKpis, currentMonthKey, areaCapacity } from '@/features/dashboard/selectors';
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, daysBetween } from '@/utils/format';
 import { auditActionLabel, projectStatusLabel } from '@/utils/domain-labels';
 import { reports } from './reportDefinitions';
@@ -271,26 +271,26 @@ export function ReportDetailPage() {
   if (reportKey === 'capacidade') {
     const month = currentMonthKey();
     const rowsRaw = (capacity.data ?? []).filter((r) => r.reference_month === month);
-    const byTeam = teamCapacity(capacity.data ?? [], month);
+    const byArea = areaCapacity(capacity.data ?? [], month);
     return (
       <>
         {header()}
         <div className="mb-4">
           <SimpleTable
-            headers={['Equipe', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Situacao']}
-            rows={byTeam.map((t) => [
-              t.team, formatNumber(t.capacity, 0), formatNumber(t.allocated, 0), formatPercent(t.pct),
-              t.pct > 100 ? <Badge key="b" tone="danger">Sobrecarga</Badge>
-                : t.pct > 85 ? <Badge key="b" tone="warn">Atencao</Badge>
+            headers={['Area', 'Gerencia', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Situacao']}
+            rows={byArea.map((a) => [
+              a.area, a.businessUnit ?? '—', formatNumber(a.capacity, 0), formatNumber(a.allocated, 0), formatPercent(a.pct),
+              a.status === 'danger' ? <Badge key="b" tone="danger">Sobrecarga</Badge>
+                : a.status === 'warn' ? <Badge key="b" tone="warn">Atencao</Badge>
                   : <Badge key="b" tone="ok">Adequada</Badge>,
             ])}
             loading={capacity.isLoading}
           />
         </div>
         <SimpleTable
-          headers={['Colaborador', 'Equipe', 'Area', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Projetos']}
+          headers={['Colaborador', 'Area', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Projetos']}
           rows={rowsRaw.map((r) => [
-            r.full_name, r.team_name ?? '—', r.area_name ?? '—', formatNumber(r.capacity_hours, 0),
+            r.full_name, r.area_name ?? '—', formatNumber(r.capacity_hours, 0),
             formatNumber(r.allocated_hours, 0),
             <span key="p" className={r.allocation_pct > 100 ? 'font-medium text-danger' : ''}>
               {formatPercent(r.allocation_pct)}

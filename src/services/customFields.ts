@@ -93,7 +93,7 @@ export function toTypedValue(type: CustomFieldType, raw: unknown): Partial<Custo
       return { ...base, value_timestamp: new Date(String(raw)).toISOString() };
     case 'boolean':
       return { ...base, value_boolean: Boolean(raw) };
-    case 'usuario': case 'equipe':
+    case 'usuario': case 'area':
       return { ...base, value_uuid: String(raw) };
     case 'multipla_escolha':
       return { ...base, value_json: Array.isArray(raw) ? raw : [raw] };
@@ -115,7 +115,7 @@ export function fromTypedValue(type: CustomFieldType, value: CustomFieldValue | 
     case 'data': return value.value_date ?? '';
     case 'data_hora': return value.value_timestamp ?? '';
     case 'boolean': return value.value_boolean ?? false;
-    case 'usuario': case 'equipe': return value.value_uuid ?? '';
+    case 'usuario': case 'area': return value.value_uuid ?? '';
     case 'multipla_escolha': return (value.value_json as string[] | null) ?? [];
     default: return value.value_text ?? '';
   }

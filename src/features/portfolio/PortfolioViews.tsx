@@ -92,7 +92,7 @@ export function ProjectCard({ project: p, compact }: { project: ProjectOverview;
       </dl>
 
       <p className="mt-2.5 truncate border-t border-border pt-2 text-xs text-muted">
-        {p.owner_name ?? 'Sem owner'}{p.team_name ? ` · ${p.team_name}` : ''}
+        {p.owner_name ?? 'Sem owner'}{p.area_name ? ` · ${p.area_name}` : ''}
       </p>
     </Link>
   );

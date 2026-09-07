@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   areaCapacity, consolidateCurve, groupCount, healthDistribution, portfolioKpis,
-  progressByProject, teamCapacity,
+  progressByProject,
 } from '../selectors';
 import type { ProjectOverview, ResourceCapacity } from '@/types/domain';
 
@@ -10,8 +10,9 @@ function project(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     id: crypto.randomUUID(), code: 'P-001', name: 'Projeto', category: 'Regulatorio',
     status: 'em_andamento', health: 'verde', health_is_manual: false, priority: 'media',
     phase: null, portfolio_id: null, template_id: null, owner_id: null, sponsor_id: null,
-    team_id: null, company_id: null, owner_name: 'Rafael', sponsor_name: null,
-    team_name: 'Contabilidade', company_name: null, start_date: '2026-01-01',
+    area_id: null, company_id: null, owner_name: 'Rafael', sponsor_name: null,
+    area_name: 'Contabilidade', business_unit_id: null, business_unit_name: null,
+    company_name: null, start_date: '2026-01-01',
     target_date: '2026-12-31', actual_end_date: null,
     progress_planned: 50, progress_actual: 50, progress_deviation: 0, days_overdue: 0,
     budget: 100_000, actual: 40_000, committed: 10_000, forecast: 100_000, remaining: 50_000,
@@ -161,38 +162,13 @@ describe('consolidateCurve', () => {
 
 function capacityRow(overrides: Partial<ResourceCapacity> = {}): ResourceCapacity {
   return {
-    profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil',
+    profile_id: '1', full_name: 'A',
     reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 0,
     allocation_pct: 0, project_count: 0,
     area_id: null, area_name: null, business_unit_id: null, business_unit_name: null,
     ...overrides,
   };
 }
-
-describe('teamCapacity', () => {
-  const rows: ResourceCapacity[] = [
-    capacityRow({ profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', allocated_hours: 120, allocation_pct: 120, project_count: 3 }),
-    capacityRow({ profile_id: '2', full_name: 'B', team_id: 't1', team_name: 'Contabil', reference_month: '2026-06-01', allocated_hours: 60, allocation_pct: 60, project_count: 1 }),
-    capacityRow({ profile_id: '3', full_name: 'C', team_id: 't2', team_name: 'Fiscal', reference_month: '2026-06-01', allocated_hours: 50, allocation_pct: 50, project_count: 1 }),
-    capacityRow({ profile_id: '1', full_name: 'A', team_id: 't1', team_name: 'Contabil', reference_month: '2026-07-01', allocated_hours: 300, allocation_pct: 300, project_count: 5 }),
-  ];
-
-  it('agrega por equipe apenas o mes de referencia', () => {
-    const result = teamCapacity(rows, '2026-06-01');
-    expect(result).toHaveLength(2);
-    const contabil = result.find((r) => r.team === 'Contabil')!;
-    expect(contabil.capacity).toBe(200);
-    expect(contabil.allocated).toBe(180);
-    expect(contabil.pct).toBe(90);
-    expect(contabil.overloaded).toBe(false);
-  });
-
-  it('marca sobrecarga quando a alocacao supera a capacidade', () => {
-    const result = teamCapacity(rows, '2026-07-01');
-    expect(result[0].overloaded).toBe(true);
-    expect(result[0].pct).toBe(300);
-  });
-});
 
 describe('areaCapacity', () => {
   const rows: ResourceCapacity[] = [

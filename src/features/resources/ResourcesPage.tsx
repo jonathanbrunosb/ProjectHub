@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
@@ -11,39 +10,34 @@ import { Select } from '@/components/ui/Input';
 import { Tabs } from '@/components/ui/Tabs';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState, EmptyState, Spinner } from '@/components/ui/Feedback';
-import { ChartCard } from '@/components/charts/ChartCard';
-import { ChartTooltip } from '@/components/charts/ChartTooltip';
-import { chartColors } from '@/components/charts/chartTheme';
 import { cn } from '@/utils/cn';
 import { formatMonth, formatPercent, formatNumber } from '@/utils/format';
 import { listAllocations, listCapacity, type AllocationRow } from '@/services/governance';
-import { listProfiles, listTeams } from '@/services/projects';
+import { listProfiles } from '@/services/projects';
 import { listAreas } from '@/services/areas';
-import { areaCapacity, currentMonthKey, teamCapacity, type AreaCapacity } from '@/features/dashboard/selectors';
+import { areaCapacity, currentMonthKey, type AreaCapacity } from '@/features/dashboard/selectors';
 
 /**
  * Capacidade x alocacao. Alertas seguem a regra: acima de 100% = sobrecarga;
- * entre o limite da equipe e 100% = atencao.
+ * entre o limite da area e 100% = atencao.
  */
 export function ResourcesPage() {
   useBreadcrumbs([{ label: 'Recursos & Capacidade' }]);
   const [tab, setTab] = useState('heatmap');
-  const [teamFilter, setTeamFilter] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [areaMonth, setAreaMonth] = useState<string | null>(null);
   const [businessUnitFilter, setBusinessUnitFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [areaDrillDown, setAreaDrillDown] = useState<AreaCapacity | null>(null);
-  const colors = chartColors();
 
   const capacityQuery = useQuery({ queryKey: ['capacity'], queryFn: listCapacity });
   const allocationsQuery = useQuery({ queryKey: ['allocations'], queryFn: () => listAllocations() });
-  const teamsQuery = useQuery({ queryKey: ['teams'], queryFn: listTeams });
-  const areasQuery = useQuery({ queryKey: ['areas'], queryFn: listAreas, enabled: tab === 'areas' });
+  const areasQuery = useQuery({ queryKey: ['areas'], queryFn: listAreas });
   const profilesQuery = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles, enabled: tab === 'areas' });
 
   const rows = useMemo(
-    () => (capacityQuery.data ?? []).filter((r) => !teamFilter || r.team_name === teamFilter),
-    [capacityQuery.data, teamFilter],
+    () => (capacityQuery.data ?? []).filter((r) => !areaFilter || r.area_name === areaFilter),
+    [capacityQuery.data, areaFilter],
   );
 
   const months = useMemo(
@@ -51,10 +45,15 @@ export function ResourcesPage() {
     [rows],
   );
 
+  const areaOptions = useMemo(
+    () => [...new Set((capacityQuery.data ?? []).map((r) => r.area_name).filter((v): v is string => Boolean(v)))].sort(),
+    [capacityQuery.data],
+  );
+
   const people = useMemo(() => {
-    const map = new Map<string, { name: string; team: string | null; byMonth: Map<string, typeof rows[number]> }>();
+    const map = new Map<string, { name: string; area: string | null; byMonth: Map<string, typeof rows[number]> }>();
     for (const r of rows) {
-      const entry = map.get(r.profile_id) ?? { name: r.full_name, team: r.team_name, byMonth: new Map() };
+      const entry = map.get(r.profile_id) ?? { name: r.full_name, area: r.area_name, byMonth: new Map() };
       entry.byMonth.set(r.reference_month, r);
       map.set(r.profile_id, entry);
     }
@@ -64,7 +63,6 @@ export function ResourcesPage() {
   }, [rows]);
 
   const currentMonth = currentMonthKey();
-  const byTeam = useMemo(() => teamCapacity(rows, currentMonth), [rows, currentMonth]);
 
   const selectedAreaMonth = areaMonth ?? currentMonth;
   const areaManagerByAreaId = useMemo(
@@ -100,9 +98,11 @@ export function ResourcesPage() {
       .sort((a, b) => b.allocation_pct - a.allocation_pct);
   }, [areaDrillDown, capacityQuery.data, selectedAreaMonth, allocationsQuery.data]);
 
+  const byAreaCurrent = useMemo(() => areaCapacity(capacityQuery.data ?? [], currentMonth), [capacityQuery.data, currentMonth]);
+
   const alerts = useMemo(() => {
     const list: { severity: 'danger' | 'warn'; text: string }[] = [];
-    const teams = teamsQuery.data ?? [];
+    const areasByName = new Map((areasQuery.data ?? []).map((a) => [a.name, a]));
 
     for (const r of rows.filter((x) => x.reference_month === currentMonth)) {
       if (r.allocation_pct > 100) {
@@ -112,18 +112,18 @@ export function ResourcesPage() {
       }
     }
 
-    for (const t of byTeam) {
-      const config = teams.find((x) => x.name === t.team);
+    for (const a of byAreaCurrent) {
+      const config = areasByName.get(a.area);
       const limit = config?.max_allocation_pct ?? 100;
-      if (t.pct > limit) {
+      if (a.pct > limit) {
         list.push({
-          severity: t.pct > 100 ? 'danger' : 'warn',
-          text: `Equipe ${t.team} em ${formatPercent(t.pct)} de alocacao (limite configurado: ${formatPercent(limit)}).`,
+          severity: a.pct > 100 ? 'danger' : 'warn',
+          text: `Area ${a.area} em ${formatPercent(a.pct)} de alocacao (limite configurado: ${formatPercent(limit)}).`,
         });
       }
     }
     return list;
-  }, [rows, byTeam, currentMonth, teamsQuery.data]);
+  }, [rows, byAreaCurrent, currentMonth, areasQuery.data]);
 
   const totals = useMemo(() => {
     const current = rows.filter((r) => r.reference_month === currentMonth);
@@ -145,11 +145,11 @@ export function ResourcesPage() {
     <>
       <PageHeader
         title="Recursos & Capacidade"
-        description="Capacidade das equipes, alocacao por projeto e identificacao de sobrecarga."
+        description="Capacidade das areas, alocacao por projeto e identificacao de sobrecarga."
         actions={
-          <Select className="w-auto" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} aria-label="Filtrar por equipe">
-            <option value="">Todas as equipes</option>
-            {(teamsQuery.data ?? []).map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+          <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por area">
+            <option value="">Todas as areas</option>
+            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
           </Select>
         }
       />
@@ -189,7 +189,6 @@ export function ResourcesPage() {
         onChange={setTab}
         items={[
           { key: 'heatmap', label: 'Heatmap de alocacao' },
-          { key: 'equipes', label: 'Por equipe' },
           { key: 'areas', label: 'Por area' },
           { key: 'alocacoes', label: 'Alocacoes', count: (allocationsQuery.data ?? []).length },
         ]}
@@ -216,7 +215,7 @@ export function ResourcesPage() {
                   <tr key={p.id} className="border-t border-border">
                     <td className="py-2 pr-3">
                       <p className="truncate font-medium">{p.name}</p>
-                      <p className="truncate text-xs text-muted">{p.team ?? 'Sem equipe'}</p>
+                      <p className="truncate text-xs text-muted">{p.area ?? 'Sem area'}</p>
                     </td>
                     {months.map((m) => {
                       const cell = p.byMonth.get(m);
@@ -244,22 +243,6 @@ export function ResourcesPage() {
             </table>
           )}
         </div>
-      ) : tab === 'equipes' ? (
-        <ChartCard title="Alocacao por equipe" description="Mes corrente" empty={byTeam.length === 0} height={320}>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={byTeam} layout="vertical" margin={{ left: 8, right: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} horizontal={false} />
-              <XAxis type="number" unit="%" tick={{ fontSize: 11, fill: colors.muted }} />
-              <YAxis type="category" dataKey="team" width={160} tick={{ fontSize: 11, fill: colors.muted }} />
-              <Tooltip content={<ChartTooltip formatter={(v) => formatPercent(v)} />} />
-              <Bar dataKey="pct" name="Alocacao" radius={[0, 3, 3, 0]} maxBarSize={22}>
-                {byTeam.map((t, i) => (
-                  <Cell key={i} fill={t.pct > 100 ? colors.danger : t.pct > 85 ? colors.warn : colors.ok} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
       ) : tab === 'areas' ? (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">

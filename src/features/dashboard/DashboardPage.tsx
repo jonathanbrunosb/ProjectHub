@@ -30,7 +30,7 @@ import { listUpcomingMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listRecentActivity, listCalendarConflicts } from '@/services/governance';
 import {
   areaCapacity, consolidateCurve, currentMonthKey, financialByProject, groupCount, healthDistribution,
-  portfolioKpis, progressByProject, teamCapacity,
+  portfolioKpis, progressByProject,
 } from './selectors';
 
 const healthColorKey: Record<string, keyof ReturnType<typeof chartColors>> = {
@@ -66,10 +66,6 @@ export function DashboardPage() {
   const curve = useMemo(
     () => consolidateCurve(curveQuery.data ?? [], enabledProjectIds),
     [curveQuery.data, enabledProjectIds],
-  );
-  const capacity = useMemo(
-    () => teamCapacity(capacityQuery.data ?? [], currentMonthKey()),
-    [capacityQuery.data],
   );
   const capacityByArea = useMemo(
     () => areaCapacity(capacityQuery.data ?? [], currentMonthKey()),
@@ -317,31 +313,6 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard
-          title="Capacidade das equipes"
-          description="Alocacao sobre a capacidade do mes corrente"
-          loading={capacityQuery.isLoading}
-          empty={capacity.length === 0}
-          height={220}
-          action={<Link to="/recursos" className="text-xs text-brand hover:underline">Detalhar</Link>}
-        >
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={capacity} layout="vertical" margin={{ left: 4, right: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} horizontal={false} />
-              <XAxis type="number" unit="%" tick={{ fontSize: 11, fill: colors.muted }} />
-              <YAxis type="category" dataKey="team" width={128} tick={{ fontSize: 11, fill: colors.muted }} />
-              <Tooltip content={<ChartTooltip formatter={(v) => formatPercent(v)} />} />
-              <Bar dataKey="pct" name="Alocacao" radius={[0, 3, 3, 0]} maxBarSize={18}>
-                {capacity.map((c, i) => (
-                  <Cell key={i} fill={c.pct > 100 ? colors.danger : c.pct > 85 ? colors.warn : colors.ok} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-1">
         <ChartCard
           title="Capacidade por area"
           description="Utilizacao consolidada por area organizacional no mes corrente"

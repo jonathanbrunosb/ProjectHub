@@ -30,7 +30,7 @@ export async function setBusinessUnitActive(id: string, active: boolean): Promis
 }
 
 const AREA_COLUMNS =
-  'id,business_unit_id,code,name,description,manager_user_id,is_active,created_at,created_by,updated_at,updated_by';
+  'id,business_unit_id,code,name,description,manager_user_id,is_active,max_allocation_pct,created_at,created_by,updated_at,updated_by';
 
 export interface AreaWithRelations extends Area {
   business_unit: { id: string; name: string; code: string } | null;
@@ -52,6 +52,7 @@ export interface AreaInput {
   name: string;
   description: string | null;
   manager_user_id: string | null;
+  max_allocation_pct?: number;
 }
 
 export async function createArea(input: AreaInput): Promise<string> {
@@ -67,12 +68,6 @@ export async function updateArea(id: string, patch: Partial<AreaInput>): Promise
 
 export async function setAreaActive(id: string, is_active: boolean): Promise<void> {
   const { error } = await supabase.from('areas').update({ is_active }).eq('id', id);
-  if (error) throw error;
-}
-
-/** Vinculo estrutural da equipe a uma area (distinto do vinculo por pessoa). */
-export async function updateTeamArea(teamId: string, areaId: string | null): Promise<void> {
-  const { error } = await supabase.from('teams').update({ area_id: areaId }).eq('id', teamId);
   if (error) throw error;
 }
 

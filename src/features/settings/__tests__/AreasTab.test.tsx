@@ -48,10 +48,6 @@ const profiles = [
   { id: 'user-2', full_name: 'Colaborador Dois', email: 'colab@empresa.com.br', area_id: null, active: true },
 ];
 
-const teams = [
-  { id: 'team-1', name: 'Contabilidade Societaria', area: 'Contabilidade', area_id: 'area-1', active: true },
-];
-
 const listBusinessUnits = vi.fn(async () => businessUnits);
 const createBusinessUnit = vi.fn(async (_input: unknown) => 'bu-new');
 const updateBusinessUnit = vi.fn(async (_id: string, _patch: unknown) => {});
@@ -60,7 +56,6 @@ const listAreas = vi.fn(async () => areas);
 const createArea = vi.fn(async (_input: unknown) => 'area-new');
 const updateArea = vi.fn(async (_id: string, _patch: unknown) => {});
 const setAreaActive = vi.fn(async (_id: string, _active: boolean) => {});
-const updateTeamArea = vi.fn(async (_teamId: string, _areaId: string | null) => {});
 const assignPrimaryArea = vi.fn(async (_userId: string, _areaId: string) => {});
 
 vi.mock('@/services/areas', () => ({
@@ -72,7 +67,6 @@ vi.mock('@/services/areas', () => ({
   createArea: (...a: [unknown]) => createArea(...a),
   updateArea: (...a: [string, unknown]) => updateArea(...a),
   setAreaActive: (...a: [string, boolean]) => setAreaActive(...a),
-  updateTeamArea: (...a: [string, string | null]) => updateTeamArea(...a),
   assignPrimaryArea: (...a: [string, string]) => assignPrimaryArea(...a),
 }));
 
@@ -80,7 +74,6 @@ vi.mock('@/services/projects', () => ({
   listProfiles: vi.fn(async () => profiles),
   listActiveProfiles: vi.fn(async () => profiles),
   listCompanies: vi.fn(async () => [{ id: 'co-1', code: 'HOLD', name: 'Holding Corporativa', active: true }]),
-  listTeams: vi.fn(async () => teams),
   listTemplates: vi.fn(async () => []),
 }));
 
@@ -117,14 +110,6 @@ function renderPerfil() {
   );
 }
 
-function renderEquipes() {
-  return renderWithProviders(
-    <MemoryRouter initialEntries={['/configuracoes/equipes']}>
-      <SettingsPage />
-    </MemoryRouter>,
-  );
-}
-
 beforeEach(() => {
   listBusinessUnits.mockClear().mockImplementation(async () => businessUnits);
   createBusinessUnit.mockClear();
@@ -134,7 +119,6 @@ beforeEach(() => {
   createArea.mockClear();
   updateArea.mockClear();
   setAreaActive.mockClear();
-  updateTeamArea.mockClear();
   assignPrimaryArea.mockClear();
 });
 
@@ -189,7 +173,7 @@ describe('aba Areas', () => {
 
     await waitFor(() => expect(createArea).toHaveBeenCalledWith({
       business_unit_id: 'bu-1', code: 'CTB-REG', name: 'Contabilidade Regulatoria',
-      description: null, manager_user_id: null,
+      description: null, manager_user_id: null, max_allocation_pct: 100,
     }));
   });
 
@@ -200,12 +184,11 @@ describe('aba Areas', () => {
     expect(within(select).queryByText('Fiscal e Tributario')).toBeNull();
   });
 
-  it('mostra os vinculos (colaboradores e equipes) da area', async () => {
+  it('mostra os vinculos (colaboradores) da area', async () => {
     renderAreas();
     await userEvent.click(await screen.findByRole('button', { name: /vinculos/i }));
     const modal = await screen.findByRole('dialog', { name: /vinculos de contabilidade geral/i });
     expect(within(modal).getByText('Admin Um')).toBeInTheDocument();
-    expect(within(modal).getByText('Contabilidade Societaria')).toBeInTheDocument();
   });
 
   it('inativar area nao remove colaboradores ja vinculados - so bloqueia novos vinculos', async () => {
@@ -224,20 +207,5 @@ describe('aba Meu perfil - Area (item 6, visualizacao)', () => {
     expect(await screen.findByText('Area organizacional')).toBeInTheDocument();
     expect(await screen.findByText('Contabilidade Geral')).toBeInTheDocument();
     expect(screen.getByText(/alterada apenas por quem gerencia usuarios/i)).toBeInTheDocument();
-  });
-});
-
-describe('aba Equipes - vinculo estrutural de Area (item 7)', () => {
-  it('mostra a area estrutural vinculada a cada equipe', async () => {
-    renderEquipes();
-    const linha = await screen.findByText('Contabilidade Societaria').then((el) => el.closest('tr')!);
-    expect(within(linha).getByRole('combobox')).toHaveValue('area-1');
-  });
-
-  it('permite trocar a area estrutural da equipe', async () => {
-    renderEquipes();
-    const linha = await screen.findByText('Contabilidade Societaria').then((el) => el.closest('tr')!);
-    await userEvent.selectOptions(within(linha).getByRole('combobox'), '');
-    await waitFor(() => expect(updateTeamArea).toHaveBeenCalledWith('team-1', null));
   });
 });

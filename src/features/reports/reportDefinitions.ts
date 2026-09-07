@@ -58,9 +58,9 @@ export const reports: ReportDefinition[] = [
   {
     key: 'capacidade',
     title: 'Relatorio de Capacidade',
-    description: 'Capacidade x alocacao por equipe e colaborador, com sobrecarga identificada.',
+    description: 'Capacidade x alocacao por area e colaborador, com sobrecarga identificada.',
     icon: Users,
-    audience: 'Gerencia e lideres de equipe',
+    audience: 'Gerencia e gestores de area',
   },
   {
     key: 'entregas-vencidas',

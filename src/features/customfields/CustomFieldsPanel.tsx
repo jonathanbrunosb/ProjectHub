@@ -8,7 +8,8 @@ import { describeError } from '@/lib/supabase/client';
 import {
   fromTypedValue, listApplicableDefinitions, listValues, saveValues,
 } from '@/services/customFields';
-import { listActiveProfiles, listTeams } from '@/services/projects';
+import { listActiveProfiles } from '@/services/projects';
+import { listAreas } from '@/services/areas';
 import { formatCurrency } from '@/utils/format';
 
 /**
@@ -40,7 +41,7 @@ export function CustomFieldsPanel({
   });
 
   const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles });
-  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
 
   const byDefinition = useMemo(() => {
     const map = new Map<string, ReturnType<typeof fromTypedValue>>();
@@ -177,12 +178,12 @@ export function CustomFieldsPanel({
                   </Select>
                 </Field>
               );
-            case 'equipe':
+            case 'area':
               return (
                 <Field key={def.id} {...common}>
                   <Select value={String(value ?? '')} onChange={(e) => set(def.id, e.target.value)}>
                     <option value="">Selecione...</option>
-                    {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {(areas.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </Select>
                 </Field>
               );

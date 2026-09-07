@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
     const {
       email, full_name: fullName, role,
       job_title: jobTitle, company_id: companyId,
-      business_unit_id: businessUnitId, primary_team_id: primaryTeamId,
+      business_unit_id: businessUnitId,
     } = (body ?? {}) as Record<string, string | null | undefined>;
 
     if (!email || !fullName || !role) {
@@ -149,7 +149,6 @@ Deno.serve(async (req) => {
         job_title: jobTitle || null,
         company_id: companyId || null,
         business_unit_id: businessUnitId || null,
-        primary_team_id: primaryTeamId || null,
       })
       .eq('id', newUserId);
 
