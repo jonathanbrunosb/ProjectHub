@@ -14,7 +14,8 @@ vi.mock('@/components/layout/AppShell', () => ({ useBreadcrumbs: vi.fn() }));
 vi.mock('@/app/AuthProvider', () => ({
   useAuth: () => ({
     can: () => true,
-    profile: { id: 'admin-1', role: 'admin' },
+    profile: { id: 'admin-1', role: 'admin', area_id: 'area-1', full_name: 'Admin Um', email: 'admin@empresa.com.br' },
+    refreshProfile: vi.fn(),
   }),
 }));
 
@@ -59,6 +60,8 @@ const listAreas = vi.fn(async () => areas);
 const createArea = vi.fn(async (_input: unknown) => 'area-new');
 const updateArea = vi.fn(async (_id: string, _patch: unknown) => {});
 const setAreaActive = vi.fn(async (_id: string, _active: boolean) => {});
+const updateTeamArea = vi.fn(async (_teamId: string, _areaId: string | null) => {});
+const assignPrimaryArea = vi.fn(async (_userId: string, _areaId: string) => {});
 
 vi.mock('@/services/areas', () => ({
   listBusinessUnits: (...a: []) => listBusinessUnits(...a),
@@ -69,6 +72,8 @@ vi.mock('@/services/areas', () => ({
   createArea: (...a: [unknown]) => createArea(...a),
   updateArea: (...a: [string, unknown]) => updateArea(...a),
   setAreaActive: (...a: [string, boolean]) => setAreaActive(...a),
+  updateTeamArea: (...a: [string, string | null]) => updateTeamArea(...a),
+  assignPrimaryArea: (...a: [string, string]) => assignPrimaryArea(...a),
 }));
 
 vi.mock('@/services/projects', () => ({
@@ -104,6 +109,22 @@ function renderAreas() {
   );
 }
 
+function renderPerfil() {
+  return renderWithProviders(
+    <MemoryRouter initialEntries={['/configuracoes/perfil']}>
+      <SettingsPage />
+    </MemoryRouter>,
+  );
+}
+
+function renderEquipes() {
+  return renderWithProviders(
+    <MemoryRouter initialEntries={['/configuracoes/equipes']}>
+      <SettingsPage />
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   listBusinessUnits.mockClear().mockImplementation(async () => businessUnits);
   createBusinessUnit.mockClear();
@@ -113,6 +134,8 @@ beforeEach(() => {
   createArea.mockClear();
   updateArea.mockClear();
   setAreaActive.mockClear();
+  updateTeamArea.mockClear();
+  assignPrimaryArea.mockClear();
 });
 
 describe('aba Gerencias', () => {
@@ -192,5 +215,29 @@ describe('aba Areas', () => {
     expect(await screen.findByText(/continuam vinculados/i)).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole('button', { name: /^inativar$/i })[1]);
     await waitFor(() => expect(setAreaActive).toHaveBeenCalledWith('area-1', false));
+  });
+});
+
+describe('aba Meu perfil - Area (item 6, visualizacao)', () => {
+  it('mostra a area vinculada do proprio usuario, somente leitura', async () => {
+    renderPerfil();
+    expect(await screen.findByText('Area organizacional')).toBeInTheDocument();
+    expect(await screen.findByText('Contabilidade Geral')).toBeInTheDocument();
+    expect(screen.getByText(/alterada apenas por quem gerencia usuarios/i)).toBeInTheDocument();
+  });
+});
+
+describe('aba Equipes - vinculo estrutural de Area (item 7)', () => {
+  it('mostra a area estrutural vinculada a cada equipe', async () => {
+    renderEquipes();
+    const linha = await screen.findByText('Contabilidade Societaria').then((el) => el.closest('tr')!);
+    expect(within(linha).getByRole('combobox')).toHaveValue('area-1');
+  });
+
+  it('permite trocar a area estrutural da equipe', async () => {
+    renderEquipes();
+    const linha = await screen.findByText('Contabilidade Societaria').then((el) => el.closest('tr')!);
+    await userEvent.selectOptions(within(linha).getByRole('combobox'), '');
+    await waitFor(() => expect(updateTeamArea).toHaveBeenCalledWith('team-1', null));
   });
 });

@@ -70,6 +70,12 @@ export async function setAreaActive(id: string, is_active: boolean): Promise<voi
   if (error) throw error;
 }
 
+/** Vinculo estrutural da equipe a uma area (distinto do vinculo por pessoa). */
+export async function updateTeamArea(teamId: string, areaId: string | null): Promise<void> {
+  const { error } = await supabase.from('teams').update({ area_id: areaId }).eq('id', teamId);
+  if (error) throw error;
+}
+
 /**
  * Abre um novo vinculo primario de area para a pessoa. O gatilho no banco
  * fecha automaticamente o vinculo anterior (valid_to) e sincroniza

@@ -29,8 +29,8 @@ import {
   listActiveProfiles, listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
 } from '@/services/projects';
 import {
-  createArea, createBusinessUnit, listAreas, listBusinessUnits, setAreaActive, setBusinessUnitActive,
-  updateArea, updateBusinessUnit, type AreaWithRelations,
+  assignPrimaryArea, createArea, createBusinessUnit, listAreas, listBusinessUnits, setAreaActive,
+  setBusinessUnitActive, updateArea, updateBusinessUnit, updateTeamArea, type AreaWithRelations,
 } from '@/services/areas';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
@@ -107,6 +107,9 @@ function ProfileTab() {
     weekly_capacity_hours: String(profile?.weekly_capacity_hours ?? 40),
   });
 
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+  const myArea = areas.data?.find((a) => a.id === profile?.area_id) ?? null;
+
   const save = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
@@ -137,6 +140,16 @@ function ProfileTab() {
         a regra e aplicada no banco, nao apenas na interface.
       </p>
 
+      <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm">
+        <p className="text-xs font-semibold text-muted">Area organizacional</p>
+        {myArea ? (
+          <p className="mt-0.5">{myArea.name} <span className="text-xs text-muted">· {myArea.business_unit?.name ?? '—'}</span></p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted">Nao vinculada - fale com o Admin, PMO ou Sponsor.</p>
+        )}
+        <p className="mt-1 text-xs text-muted">Alterada apenas por quem gerencia usuarios, em Configuracoes.</p>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome completo" required className="sm:col-span-2">
           <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
@@ -159,12 +172,15 @@ function ProfileTab() {
 
 // ---------------------------------------------------------------------------
 const blankNewUser = {
-  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '',
+  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '', area_id: '',
 };
 
 const blankEditForm = {
-  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40,
+  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40, area_id: '',
 };
+
+/** Pendencia administrativa (item 8): filtro especial, nao um id de area de verdade. */
+const PENDING_AREA_FILTER = '__pending__';
 
 function UsersTab() {
   const { can, profile } = useAuth();
@@ -181,9 +197,39 @@ function UsersTab() {
   const [editForm, setEditForm] = useState(blankEditForm);
   const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string; active: boolean } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [areaFilter, setAreaFilter] = useState('');
 
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen || Boolean(editTarget) });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen || Boolean(editTarget) });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+
+  const areaById = useMemo(() => new Map((areas.data ?? []).map((a) => [a.id, a])), [areas.data]);
+  const teamById = useMemo(() => new Map((teams.data ?? []).map((t) => [t.id, t])), [teams.data]);
+
+  const pendingArea = useMemo(() => data.filter((p) => p.active && !p.area_id), [data]);
+
+  const rows = useMemo(() => data.filter((p) => {
+    if (!areaFilter) return true;
+    if (areaFilter === PENDING_AREA_FILTER) return p.active && !p.area_id;
+    return p.area_id === areaFilter;
+  }), [data, areaFilter]);
+
+  /** Se a equipe escolhida ja tem area definida e o campo Area ainda esta vazio, sugere a mesma area. */
+  function suggestAreaFromTeam(teamId: string, currentAreaId: string): string {
+    if (currentAreaId) return currentAreaId;
+    return teamById.get(teamId)?.area_id ?? '';
+  }
+
+  /**
+   * Item 7: nao bloqueia a combinacao, mas avisa quando a equipe escolhida
+   * pertence a uma area estrutural diferente da area selecionada para a pessoa.
+   */
+  function teamAreaMismatch(teamId: string, areaId: string): string | null {
+    const team = teamById.get(teamId);
+    if (!team?.area_id || !areaId || team.area_id === areaId) return null;
+    const teamAreaName = areaById.get(team.area_id)?.name ?? 'outra area';
+    return `A equipe "${team.name}" pertence a ${teamAreaName} - confirme se o vinculo e intencional.`;
+  }
 
   const changeEnvironmentAccess = useMutation({
     mutationFn: async ({ id, allowed }: { id: string; allowed: boolean }) => {
@@ -215,7 +261,10 @@ function UsersTab() {
       if (!inviteForm.full_name.trim() || !inviteForm.email.trim()) {
         throw new Error('Informe nome e e-mail.');
       }
-      return createUser({
+      if (!inviteForm.area_id) {
+        throw new Error('Selecione a Area do colaborador - todo colaborador ativo precisa de uma area principal.');
+      }
+      const result = await createUser({
         email: inviteForm.email.trim(),
         full_name: inviteForm.full_name.trim(),
         role: inviteForm.role,
@@ -223,6 +272,11 @@ function UsersTab() {
         company_id: inviteForm.company_id || null,
         primary_team_id: inviteForm.primary_team_id || null,
       });
+      // A conta ja nasce ativa (ver descricao do modal) - abre o primeiro
+      // vinculo de area assim que o profile existe, preservando o historico
+      // desde o dia 1 em vez de gravar profiles.area_id diretamente.
+      await assignPrimaryArea(result.id, inviteForm.area_id);
+      return result;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
@@ -253,6 +307,11 @@ function UsersTab() {
         weekly_capacity_hours: editForm.weekly_capacity_hours,
       }).eq('id', editTarget.id);
       if (error) throw error;
+      // So abre um novo vinculo quando a Area realmente mudou - o gatilho no
+      // banco fecha o vinculo anterior e preserva o historico (item 9).
+      if (editForm.area_id && editForm.area_id !== (editTarget.area_id ?? '')) {
+        await assignPrimaryArea(editTarget.id, editForm.area_id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
@@ -292,6 +351,7 @@ function UsersTab() {
       company_id: p.company_id ?? '',
       primary_team_id: p.primary_team_id ?? '',
       weekly_capacity_hours: p.weekly_capacity_hours,
+      area_id: p.area_id ?? '',
     });
     setEditTarget(p);
   }
@@ -300,9 +360,24 @@ function UsersTab() {
 
   return (
     <>
-      {can('users.manage') && (
-        <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por area">
+          <option value="">Todas as areas</option>
+          {pendingArea.length > 0 && <option value={PENDING_AREA_FILTER}>Pendencia - sem area ({pendingArea.length})</option>}
+          {(areas.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </Select>
+        {can('users.manage') && (
           <Button onClick={() => setInviteOpen(true)} icon={<Plus className="h-4 w-4" />}>Adicionar usuário</Button>
+        )}
+      </div>
+
+      {pendingArea.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs text-warn">
+          <span>
+            <b>{pendingArea.length}</b> colaborador{pendingArea.length === 1 ? '' : 'es'} ativo{pendingArea.length === 1 ? '' : 's'} sem Area
+            principal vinculada - pendencia administrativa, nao bloqueia o acesso.
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setAreaFilter(PENDING_AREA_FILTER)}>Ver e vincular</Button>
         </div>
       )}
 
@@ -322,16 +397,25 @@ function UsersTab() {
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {['Usuario', 'Cargo', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
+              {['Usuario', 'Cargo', 'Area', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.map((p) => (
+            {rows.map((p) => (
               <tr key={p.id} className="border-t border-border">
                 <td className="px-3 py-2.5"><AvatarWithName name={p.full_name} subtitle={p.email} /></td>
                 <td className="px-3 py-2.5 text-muted">{p.job_title ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  {p.area_id ? (
+                    <span className="text-sm">{areaById.get(p.area_id)?.name ?? '—'}</span>
+                  ) : p.active ? (
+                    <Badge tone="warn">Sem area</Badge>
+                  ) : (
+                    <span className="text-xs text-muted">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5">
                   {can('users.manage') && p.id !== profile?.id ? (
                     <Select
@@ -409,6 +493,9 @@ function UsersTab() {
                 </td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={8}><EmptyState title="Nenhum usuario encontrado com esse filtro" /></td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -427,10 +514,10 @@ function UsersTab() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nome completo" required className="sm:col-span-2">
-            <Input value={inviteForm.full_name} onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))} />
+            <Input aria-label="Nome completo" value={inviteForm.full_name} onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))} />
           </Field>
           <Field label="E-mail" required className="sm:col-span-2">
-            <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
+            <Input aria-label="E-mail" type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
           </Field>
           <Field label="Papel de acesso" required>
             <Select value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as RoleKey }))}>
@@ -447,10 +534,29 @@ function UsersTab() {
             </Select>
           </Field>
           <Field label="Equipe">
-            <Select value={inviteForm.primary_team_id} onChange={(e) => setInviteForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+            <Select
+              value={inviteForm.primary_team_id}
+              onChange={(e) => setInviteForm((f) => ({
+                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
+              }))}
+            >
               <option value="">Sem equipe</option>
               {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
+          </Field>
+          <Field
+            label="Area" required className="sm:col-span-2"
+            hint="Area organizacional principal do colaborador - obrigatoria."
+          >
+            <Select aria-label="Area" value={inviteForm.area_id} onChange={(e) => setInviteForm((f) => ({ ...f, area_id: e.target.value }))}>
+              <option value="">Selecione...</option>
+              {(areas.data ?? []).filter((a) => a.is_active).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+              ))}
+            </Select>
+            {teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id) && (
+              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id)}</p>
+            )}
           </Field>
         </div>
       </Modal>
@@ -580,10 +686,31 @@ function UsersTab() {
             </Select>
           </Field>
           <Field label="Equipe">
-            <Select value={editForm.primary_team_id} onChange={(e) => setEditForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+            <Select
+              value={editForm.primary_team_id}
+              onChange={(e) => setEditForm((f) => ({
+                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
+              }))}
+            >
               <option value="">Sem equipe</option>
               {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
+          </Field>
+          <Field
+            label="Area" className="sm:col-span-2"
+            hint={editTarget?.active
+              ? 'Area organizacional principal do colaborador.'
+              : 'Colaborador inativo - a area pode ficar em branco.'}
+          >
+            <Select aria-label="Area" value={editForm.area_id} onChange={(e) => setEditForm((f) => ({ ...f, area_id: e.target.value }))}>
+              <option value="">Sem area (pendencia)</option>
+              {(areas.data ?? []).filter((a) => a.is_active || a.id === editForm.area_id).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+              ))}
+            </Select>
+            {teamAreaMismatch(editForm.primary_team_id, editForm.area_id) && (
+              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(editForm.primary_team_id, editForm.area_id)}</p>
+            )}
           </Field>
         </div>
       </Modal>
@@ -906,14 +1033,29 @@ function TemplatesTab() {
 }
 
 function TeamsTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const canManage = can('portfolio.manage');
   const { data = [], isLoading } = useQuery({ queryKey: ['teams'], queryFn: listTeams });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+
+  const changeArea = useMutation({
+    mutationFn: ({ teamId, areaId }: { teamId: string; areaId: string }) => updateTeamArea(teamId, areaId || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('Area da equipe atualizada', 'A alteracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
   if (isLoading) return <Spinner />;
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-surface-2">
           <tr>
-            {['Equipe', 'Area', 'Capacidade semanal', 'Limite de alocacao'].map((h) => (
+            {['Equipe', 'Area (legado, texto livre)', 'Area (estrutural)', 'Capacidade semanal', 'Limite de alocacao'].map((h) => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
             ))}
           </tr>
@@ -923,6 +1065,22 @@ function TeamsTab() {
             <tr key={t.id} className="border-t border-border">
               <td className="px-3 py-2.5 font-medium">{t.name}</td>
               <td className="px-3 py-2.5 text-muted">{t.area ?? '—'}</td>
+              <td className="px-3 py-2.5">
+                {canManage ? (
+                  <Select
+                    className="h-8 w-auto py-0 text-xs"
+                    value={t.area_id ?? ''}
+                    onChange={(e) => changeArea.mutate({ teamId: t.id, areaId: e.target.value })}
+                  >
+                    <option value="">Sem area vinculada</option>
+                    {(areas.data ?? []).filter((a) => a.is_active || a.id === t.area_id).map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </Select>
+                ) : (
+                  <span className="text-sm">{(areas.data ?? []).find((a) => a.id === t.area_id)?.name ?? '—'}</span>
+                )}
+              </td>
               <td className="px-3 py-2.5 tabular-nums">{t.weekly_capacity_hours} h</td>
               <td className="px-3 py-2.5 tabular-nums">{t.max_allocation_pct}%</td>
             </tr>
