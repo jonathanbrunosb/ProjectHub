@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Plus, Table2, LayoutGrid, Columns, GanttChartSquare, Map } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -15,7 +16,7 @@ import { useAuth } from '@/app/AuthProvider';
 import { useEnvironment } from '@/app/EnvironmentProvider';
 import { useTableState } from '@/hooks/useTableState';
 import { listProjectOverview } from '@/services/projects';
-import { listCalendarEvents } from '@/services/governance';
+import { listCalendarEvents, listAllocations } from '@/services/governance';
 import { financialColumnKeys, portfolioColumns, portfolioDefaultHidden } from './columns';
 import { PortfolioCards, PortfolioKanban } from './PortfolioViews';
 import { NewProjectModal } from '@/features/projects/NewProjectModal';
@@ -55,24 +56,59 @@ export function PortfolioPage() {
     enabled: mode === 'gantt' || mode === 'roadmap',
   });
 
+  // Um projeto pode envolver recursos de varias areas - a area nao e' um campo
+  // do projeto, e' derivada de quem esta alocado nele (resource_allocations).
+  const allocationsQuery = useQuery({ queryKey: ['allocations'], queryFn: () => listAllocations() });
+
   const statusFilter = params.get('status') ?? '';
   const healthFilter = params.get('health') ?? '';
   const categoryFilter = params.get('categoria') ?? '';
+  const areaFilter = params.get('area') ?? '';
 
   const categories = useMemo(
     () => [...new Set(data.map((p) => p.category))].sort(),
     [data],
   );
 
+  /** Areas participantes de cada projeto: uniao das areas de quem esta alocado nele. */
+  const projectAreaNames = useMemo(() => {
+    const map = new globalThis.Map<string, Set<string>>();
+    for (const a of allocationsQuery.data ?? []) {
+      const name = a.profile?.area?.name;
+      if (!name) continue;
+      const set = map.get(a.project_id) ?? new Set<string>();
+      set.add(name);
+      map.set(a.project_id, set);
+    }
+    return map;
+  }, [allocationsQuery.data]);
+
+  const areaOptions = useMemo(
+    () => [...new Set([...projectAreaNames.values()].flatMap((s) => [...s]))].sort(),
+    [projectAreaNames],
+  );
+
   // Sem nenhum projeto usando gestao financeira no escopo carregado, as colunas
   // financeiras (incl. o status "Financeiro") apenas poluiriam a leitura - a
   // pessoa que precisar delas ainda pode ligar o modulo em algum projeto.
   const anyFinancial = useMemo(() => data.some((p) => p.financial_effective_enabled), [data]);
+  const areaColumn = useMemo<ColumnDef<ProjectOverview, unknown>>(() => ({
+    id: 'area_names', header: 'Areas participantes', meta: { label: 'Areas participantes' }, size: 200,
+    accessorFn: (row) => [...(projectAreaNames.get(row.id) ?? [])].sort().join(', '),
+    cell: ({ getValue }) => {
+      const v = getValue() as string;
+      return v ? <span className="text-sm">{v}</span> : <span className="text-xs text-muted">—</span>;
+    },
+  }), [projectAreaNames]);
+
   const columns = useMemo(
-    () => (anyFinancial ? portfolioColumns : portfolioColumns.filter(
-      (c) => !financialColumnKeys.includes(String((c as { accessorKey?: string }).accessorKey)),
-    )),
-    [anyFinancial],
+    () => [
+      ...(anyFinancial ? portfolioColumns : portfolioColumns.filter(
+        (c) => !financialColumnKeys.includes(String((c as { accessorKey?: string }).accessorKey)),
+      )),
+      areaColumn,
+    ],
+    [anyFinancial, areaColumn],
   );
 
   const projects = useMemo(() => {
@@ -81,12 +117,13 @@ export function PortfolioPage() {
       if (statusFilter && p.status !== statusFilter) return false;
       if (healthFilter && p.health !== healthFilter) return false;
       if (categoryFilter && p.category !== categoryFilter) return false;
+      if (areaFilter && !(projectAreaNames.get(p.id)?.has(areaFilter))) return false;
       if (viewFilters.status?.length && !viewFilters.status.includes(p.status)) return false;
       if (viewFilters.health?.length && !viewFilters.health.includes(p.health)) return false;
       if (viewFilters.category?.length && !viewFilters.category.includes(p.category)) return false;
       return true;
     });
-  }, [data, statusFilter, healthFilter, categoryFilter, table.viewFilters]);
+  }, [data, statusFilter, healthFilter, categoryFilter, areaFilter, projectAreaNames, table.viewFilters]);
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -163,6 +200,14 @@ export function PortfolioPage() {
         <Select className="w-auto" value={categoryFilter} onChange={(e) => setFilter('categoria', e.target.value)} aria-label="Filtrar por categoria">
           <option value="">Todas as categorias</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </Select>
+
+        <Select
+          className="w-auto" value={areaFilter} onChange={(e) => setFilter('area', e.target.value)}
+          aria-label="Filtrar por area"
+        >
+          <option value="">Todas as areas</option>
+          {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
         </Select>
 
         <SavedViewsBar

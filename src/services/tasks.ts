@@ -7,14 +7,14 @@ const TASK_COLUMNS =
   'estimated_hours,tags,position';
 
 export interface TaskWithContext extends Task {
-  assignee: { full_name: string } | null;
+  assignee: { full_name: string; area_id: string | null; area: { name: string } | null } | null;
   project: { code: string; name: string } | null;
 }
 
 export async function listTasks(projectId?: string): Promise<TaskWithContext[]> {
   let query = supabase
     .from('tasks')
-    .select(`${TASK_COLUMNS},assignee:profiles!tasks_assignee_id_fkey(full_name),project:projects(code,name)`)
+    .select(`${TASK_COLUMNS},assignee:profiles!tasks_assignee_id_fkey(full_name,area_id,area:areas(name)),project:projects(code,name)`)
     .order('position')
     .order('due_date', { nullsFirst: false });
   if (projectId) query = query.eq('project_id', projectId);
@@ -27,7 +27,7 @@ export async function listTasks(projectId?: string): Promise<TaskWithContext[]> 
 export async function listMyTasks(profileId: string): Promise<TaskWithContext[]> {
   const { data, error } = await supabase
     .from('tasks')
-    .select(`${TASK_COLUMNS},assignee:profiles!tasks_assignee_id_fkey(full_name),project:projects(code,name)`)
+    .select(`${TASK_COLUMNS},assignee:profiles!tasks_assignee_id_fkey(full_name,area_id,area:areas(name)),project:projects(code,name)`)
     .eq('assignee_id', profileId)
     .not('status', 'in', '(concluida,cancelada)')
     .order('due_date', { nullsFirst: false });

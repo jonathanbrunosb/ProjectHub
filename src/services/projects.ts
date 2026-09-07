@@ -145,13 +145,16 @@ export interface ProjectMemberRow {
   project_role: string;
   role_label: string | null;
   can_edit: boolean;
-  profile: { full_name: string; email: string; job_title: string | null } | null;
+  profile: {
+    full_name: string; email: string; job_title: string | null;
+    area_id: string | null; area: { name: string } | null;
+  } | null;
 }
 
 export async function listProjectMembers(projectId: string): Promise<ProjectMemberRow[]> {
   const { data, error } = await supabase
     .from('project_members')
-    .select('id,project_id,profile_id,project_role,role_label,can_edit,profile:profiles(full_name,email,job_title)')
+    .select('id,project_id,profile_id,project_role,role_label,can_edit,profile:profiles(full_name,email,job_title,area_id,area:areas(name))')
     .eq('project_id', projectId)
     .order('project_role');
   if (error) throw error;
@@ -161,7 +164,7 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 // --- Cadastros de apoio (usados em formularios e filtros) -------------------
 
 const PROFILE_COLUMNS =
-  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
+  'id,email,full_name,job_title,role,company_id,business_unit_id,primary_team_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
 
 /**
  * Todos os perfis, ativos ou nao. Uso: gestao de usuarios (Admin precisa ver
@@ -194,7 +197,7 @@ export async function listActiveProfiles(): Promise<Profile[]> {
 export async function listTeams(): Promise<Team[]> {
   const { data, error } = await supabase
     .from('teams')
-    .select('id,name,area,manager_id,weekly_capacity_hours,max_allocation_pct,active')
+    .select('id,name,area,area_id,manager_id,weekly_capacity_hours,max_allocation_pct,active')
     .eq('active', true)
     .order('name');
   if (error) throw error;

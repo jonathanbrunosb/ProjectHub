@@ -53,6 +53,8 @@ export interface Profile {
   company_id: string | null;
   business_unit_id: string | null;
   primary_team_id: string | null;
+  /** Area organizacional atual (ponteiro para o vinculo primario aberto em user_area_assignments). */
+  area_id: string | null;
   avatar_url: string | null;
   weekly_capacity_hours: number;
   active: boolean;
@@ -63,8 +65,35 @@ export interface Profile {
 export interface Company { id: string; code: string; name: string; active: boolean }
 export interface BusinessUnit { id: string; company_id: string; code: string; name: string; active: boolean }
 export interface Team {
-  id: string; name: string; area: string | null; manager_id: string | null;
+  id: string; name: string; area: string | null; area_id: string | null; manager_id: string | null;
   weekly_capacity_hours: number; max_allocation_pct: number; active: boolean;
+}
+
+/** Dimensao organizacional Area: filha de business_units (Gerencia), mae de teams/profiles. */
+export interface Area {
+  id: string;
+  business_unit_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  manager_user_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/** Historico de vinculo pessoa-area, preservando o periodo de cada area anterior. */
+export interface UserAreaAssignment {
+  id: string;
+  user_id: string;
+  area_id: string;
+  valid_from: string;
+  valid_to: string | null;
+  is_primary: boolean;
+  created_at: string;
+  created_by: string | null;
 }
 
 export interface ProjectTemplate {
@@ -262,6 +291,9 @@ export interface ResourceCapacity {
   profile_id: string; full_name: string; team_id: string | null; team_name: string | null;
   reference_month: string; capacity_hours: number; allocated_hours: number;
   allocation_pct: number; project_count: number;
+  /** Area vigente NAQUELE mes de referencia (via user_area_assignments) - nao o vinculo atual. */
+  area_id: string | null; area_name: string | null;
+  business_unit_id: string | null; business_unit_name: string | null;
 }
 
 export interface CriticalCalendarEvent {

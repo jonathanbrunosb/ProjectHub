@@ -288,9 +288,9 @@ export function ReportDetailPage() {
           />
         </div>
         <SimpleTable
-          headers={['Colaborador', 'Equipe', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Projetos']}
+          headers={['Colaborador', 'Equipe', 'Area', 'Capacidade (h)', 'Alocado (h)', 'Alocacao', 'Projetos']}
           rows={rowsRaw.map((r) => [
-            r.full_name, r.team_name ?? '—', formatNumber(r.capacity_hours, 0),
+            r.full_name, r.team_name ?? '—', r.area_name ?? '—', formatNumber(r.capacity_hours, 0),
             formatNumber(r.allocated_hours, 0),
             <span key="p" className={r.allocation_pct > 100 ? 'font-medium text-danger' : ''}>
               {formatPercent(r.allocation_pct)}

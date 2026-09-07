@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import {
   Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet, CalendarDays,
+  Building2, Link2, Users,
 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -12,26 +14,32 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { EmptyState, Spinner } from '@/components/ui/Feedback';
+import { DataTable } from '@/components/ui/DataTable';
+import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback';
 import { AvatarWithName } from '@/components/ui/Avatar';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { useFinancialModule } from '@/hooks/useFinancialModule';
+import { useTableState } from '@/hooks/useTableState';
 import { supabase, describeError } from '@/lib/supabase/client';
 import {
   deleteDefinition, listAllDefinitions, replaceOptions, upsertDefinition,
 } from '@/services/customFields';
 import {
-  listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
+  listActiveProfiles, listCompanies, listProfiles, listTeams, listTemplates, updateTemplateFinancialDefault,
 } from '@/services/projects';
+import {
+  assignPrimaryArea, createArea, createBusinessUnit, listAreas, listBusinessUnits, setAreaActive,
+  setBusinessUnitActive, updateArea, updateBusinessUnit, updateTeamArea, type AreaWithRelations,
+} from '@/services/areas';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
 import { financialModeLabel, roleDescription, roleLabel } from '@/utils/domain-labels';
-import { formatDate } from '@/utils/format';
+import { formatDate, formatDateTime } from '@/utils/format';
 import type {
-  CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
+  BusinessUnit, CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
 } from '@/types/domain';
 
 const TABS = [
@@ -40,6 +48,8 @@ const TABS = [
   { key: 'campos', label: 'Campos personalizados' },
   { key: 'templates', label: 'Templates' },
   { key: 'equipes', label: 'Equipes' },
+  { key: 'gerencias', label: 'Gerencias' },
+  { key: 'areas', label: 'Areas' },
   { key: 'modulos', label: 'Modulos' },
   { key: 'sistema', label: 'Sistema' },
 ];
@@ -59,7 +69,9 @@ export function SettingsPage() {
 
   const visible = TABS.filter((t) => {
     if (t.key === 'usuarios' || t.key === 'sistema') return can('users.manage') || can('settings.manage');
-    if (t.key === 'campos' || t.key === 'templates' || t.key === 'equipes') return can('portfolio.manage');
+    if (t.key === 'campos' || t.key === 'templates' || t.key === 'equipes' || t.key === 'gerencias' || t.key === 'areas') {
+      return can('portfolio.manage');
+    }
     if (t.key === 'modulos') return can('financial_module.manage');
     return true;
   });
@@ -77,6 +89,8 @@ export function SettingsPage() {
       {tab === 'campos' && <CustomFieldsTab />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'equipes' && <TeamsTab />}
+      {tab === 'gerencias' && <GerenciasTab />}
+      {tab === 'areas' && <AreasTab />}
       {tab === 'modulos' && <ModulosTab />}
       {tab === 'sistema' && <SystemTab />}
     </>
@@ -92,6 +106,9 @@ function ProfileTab() {
     job_title: profile?.job_title ?? '',
     weekly_capacity_hours: String(profile?.weekly_capacity_hours ?? 40),
   });
+
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+  const myArea = areas.data?.find((a) => a.id === profile?.area_id) ?? null;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -123,6 +140,16 @@ function ProfileTab() {
         a regra e aplicada no banco, nao apenas na interface.
       </p>
 
+      <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm">
+        <p className="text-xs font-semibold text-muted">Area organizacional</p>
+        {myArea ? (
+          <p className="mt-0.5">{myArea.name} <span className="text-xs text-muted">· {myArea.business_unit?.name ?? '—'}</span></p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted">Nao vinculada - fale com o Admin, PMO ou Sponsor.</p>
+        )}
+        <p className="mt-1 text-xs text-muted">Alterada apenas por quem gerencia usuarios, em Configuracoes.</p>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome completo" required className="sm:col-span-2">
           <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
@@ -145,12 +172,15 @@ function ProfileTab() {
 
 // ---------------------------------------------------------------------------
 const blankNewUser = {
-  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '',
+  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', primary_team_id: '', area_id: '',
 };
 
 const blankEditForm = {
-  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40,
+  full_name: '', job_title: '', company_id: '', primary_team_id: '', weekly_capacity_hours: 40, area_id: '',
 };
+
+/** Pendencia administrativa (item 8): filtro especial, nao um id de area de verdade. */
+const PENDING_AREA_FILTER = '__pending__';
 
 function UsersTab() {
   const { can, profile } = useAuth();
@@ -167,9 +197,39 @@ function UsersTab() {
   const [editForm, setEditForm] = useState(blankEditForm);
   const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string; active: boolean } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [areaFilter, setAreaFilter] = useState('');
 
   const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen || Boolean(editTarget) });
   const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: inviteOpen || Boolean(editTarget) });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+
+  const areaById = useMemo(() => new Map((areas.data ?? []).map((a) => [a.id, a])), [areas.data]);
+  const teamById = useMemo(() => new Map((teams.data ?? []).map((t) => [t.id, t])), [teams.data]);
+
+  const pendingArea = useMemo(() => data.filter((p) => p.active && !p.area_id), [data]);
+
+  const rows = useMemo(() => data.filter((p) => {
+    if (!areaFilter) return true;
+    if (areaFilter === PENDING_AREA_FILTER) return p.active && !p.area_id;
+    return p.area_id === areaFilter;
+  }), [data, areaFilter]);
+
+  /** Se a equipe escolhida ja tem area definida e o campo Area ainda esta vazio, sugere a mesma area. */
+  function suggestAreaFromTeam(teamId: string, currentAreaId: string): string {
+    if (currentAreaId) return currentAreaId;
+    return teamById.get(teamId)?.area_id ?? '';
+  }
+
+  /**
+   * Item 7: nao bloqueia a combinacao, mas avisa quando a equipe escolhida
+   * pertence a uma area estrutural diferente da area selecionada para a pessoa.
+   */
+  function teamAreaMismatch(teamId: string, areaId: string): string | null {
+    const team = teamById.get(teamId);
+    if (!team?.area_id || !areaId || team.area_id === areaId) return null;
+    const teamAreaName = areaById.get(team.area_id)?.name ?? 'outra area';
+    return `A equipe "${team.name}" pertence a ${teamAreaName} - confirme se o vinculo e intencional.`;
+  }
 
   const changeEnvironmentAccess = useMutation({
     mutationFn: async ({ id, allowed }: { id: string; allowed: boolean }) => {
@@ -201,7 +261,10 @@ function UsersTab() {
       if (!inviteForm.full_name.trim() || !inviteForm.email.trim()) {
         throw new Error('Informe nome e e-mail.');
       }
-      return createUser({
+      if (!inviteForm.area_id) {
+        throw new Error('Selecione a Area do colaborador - todo colaborador ativo precisa de uma area principal.');
+      }
+      const result = await createUser({
         email: inviteForm.email.trim(),
         full_name: inviteForm.full_name.trim(),
         role: inviteForm.role,
@@ -209,6 +272,11 @@ function UsersTab() {
         company_id: inviteForm.company_id || null,
         primary_team_id: inviteForm.primary_team_id || null,
       });
+      // A conta ja nasce ativa (ver descricao do modal) - abre o primeiro
+      // vinculo de area assim que o profile existe, preservando o historico
+      // desde o dia 1 em vez de gravar profiles.area_id diretamente.
+      await assignPrimaryArea(result.id, inviteForm.area_id);
+      return result;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
@@ -239,6 +307,11 @@ function UsersTab() {
         weekly_capacity_hours: editForm.weekly_capacity_hours,
       }).eq('id', editTarget.id);
       if (error) throw error;
+      // So abre um novo vinculo quando a Area realmente mudou - o gatilho no
+      // banco fecha o vinculo anterior e preserva o historico (item 9).
+      if (editForm.area_id && editForm.area_id !== (editTarget.area_id ?? '')) {
+        await assignPrimaryArea(editTarget.id, editForm.area_id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
@@ -278,6 +351,7 @@ function UsersTab() {
       company_id: p.company_id ?? '',
       primary_team_id: p.primary_team_id ?? '',
       weekly_capacity_hours: p.weekly_capacity_hours,
+      area_id: p.area_id ?? '',
     });
     setEditTarget(p);
   }
@@ -286,9 +360,24 @@ function UsersTab() {
 
   return (
     <>
-      {can('users.manage') && (
-        <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por area">
+          <option value="">Todas as areas</option>
+          {pendingArea.length > 0 && <option value={PENDING_AREA_FILTER}>Pendencia - sem area ({pendingArea.length})</option>}
+          {(areas.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </Select>
+        {can('users.manage') && (
           <Button onClick={() => setInviteOpen(true)} icon={<Plus className="h-4 w-4" />}>Adicionar usuário</Button>
+        )}
+      </div>
+
+      {pendingArea.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs text-warn">
+          <span>
+            <b>{pendingArea.length}</b> colaborador{pendingArea.length === 1 ? '' : 'es'} ativo{pendingArea.length === 1 ? '' : 's'} sem Area
+            principal vinculada - pendencia administrativa, nao bloqueia o acesso.
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setAreaFilter(PENDING_AREA_FILTER)}>Ver e vincular</Button>
         </div>
       )}
 
@@ -308,16 +397,25 @@ function UsersTab() {
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {['Usuario', 'Cargo', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
+              {['Usuario', 'Cargo', 'Area', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.map((p) => (
+            {rows.map((p) => (
               <tr key={p.id} className="border-t border-border">
                 <td className="px-3 py-2.5"><AvatarWithName name={p.full_name} subtitle={p.email} /></td>
                 <td className="px-3 py-2.5 text-muted">{p.job_title ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  {p.area_id ? (
+                    <span className="text-sm">{areaById.get(p.area_id)?.name ?? '—'}</span>
+                  ) : p.active ? (
+                    <Badge tone="warn">Sem area</Badge>
+                  ) : (
+                    <span className="text-xs text-muted">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5">
                   {can('users.manage') && p.id !== profile?.id ? (
                     <Select
@@ -395,6 +493,9 @@ function UsersTab() {
                 </td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={8}><EmptyState title="Nenhum usuario encontrado com esse filtro" /></td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -413,10 +514,10 @@ function UsersTab() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nome completo" required className="sm:col-span-2">
-            <Input value={inviteForm.full_name} onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))} />
+            <Input aria-label="Nome completo" value={inviteForm.full_name} onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))} />
           </Field>
           <Field label="E-mail" required className="sm:col-span-2">
-            <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
+            <Input aria-label="E-mail" type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
           </Field>
           <Field label="Papel de acesso" required>
             <Select value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as RoleKey }))}>
@@ -433,10 +534,29 @@ function UsersTab() {
             </Select>
           </Field>
           <Field label="Equipe">
-            <Select value={inviteForm.primary_team_id} onChange={(e) => setInviteForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+            <Select
+              value={inviteForm.primary_team_id}
+              onChange={(e) => setInviteForm((f) => ({
+                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
+              }))}
+            >
               <option value="">Sem equipe</option>
               {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
+          </Field>
+          <Field
+            label="Area" required className="sm:col-span-2"
+            hint="Area organizacional principal do colaborador - obrigatoria."
+          >
+            <Select aria-label="Area" value={inviteForm.area_id} onChange={(e) => setInviteForm((f) => ({ ...f, area_id: e.target.value }))}>
+              <option value="">Selecione...</option>
+              {(areas.data ?? []).filter((a) => a.is_active).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+              ))}
+            </Select>
+            {teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id) && (
+              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(inviteForm.primary_team_id, inviteForm.area_id)}</p>
+            )}
           </Field>
         </div>
       </Modal>
@@ -566,10 +686,31 @@ function UsersTab() {
             </Select>
           </Field>
           <Field label="Equipe">
-            <Select value={editForm.primary_team_id} onChange={(e) => setEditForm((f) => ({ ...f, primary_team_id: e.target.value }))}>
+            <Select
+              value={editForm.primary_team_id}
+              onChange={(e) => setEditForm((f) => ({
+                ...f, primary_team_id: e.target.value, area_id: suggestAreaFromTeam(e.target.value, f.area_id),
+              }))}
+            >
               <option value="">Sem equipe</option>
               {(teams.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
+          </Field>
+          <Field
+            label="Area" className="sm:col-span-2"
+            hint={editTarget?.active
+              ? 'Area organizacional principal do colaborador.'
+              : 'Colaborador inativo - a area pode ficar em branco.'}
+          >
+            <Select aria-label="Area" value={editForm.area_id} onChange={(e) => setEditForm((f) => ({ ...f, area_id: e.target.value }))}>
+              <option value="">Sem area (pendencia)</option>
+              {(areas.data ?? []).filter((a) => a.is_active || a.id === editForm.area_id).map((a) => (
+                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+              ))}
+            </Select>
+            {teamAreaMismatch(editForm.primary_team_id, editForm.area_id) && (
+              <p className="mt-1 text-xs text-warn">{teamAreaMismatch(editForm.primary_team_id, editForm.area_id)}</p>
+            )}
           </Field>
         </div>
       </Modal>
@@ -892,14 +1033,29 @@ function TemplatesTab() {
 }
 
 function TeamsTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const canManage = can('portfolio.manage');
   const { data = [], isLoading } = useQuery({ queryKey: ['teams'], queryFn: listTeams });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+
+  const changeArea = useMutation({
+    mutationFn: ({ teamId, areaId }: { teamId: string; areaId: string }) => updateTeamArea(teamId, areaId || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('Area da equipe atualizada', 'A alteracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
   if (isLoading) return <Spinner />;
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-surface-2">
           <tr>
-            {['Equipe', 'Area', 'Capacidade semanal', 'Limite de alocacao'].map((h) => (
+            {['Equipe', 'Area (legado, texto livre)', 'Area (estrutural)', 'Capacidade semanal', 'Limite de alocacao'].map((h) => (
               <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
             ))}
           </tr>
@@ -909,6 +1065,22 @@ function TeamsTab() {
             <tr key={t.id} className="border-t border-border">
               <td className="px-3 py-2.5 font-medium">{t.name}</td>
               <td className="px-3 py-2.5 text-muted">{t.area ?? '—'}</td>
+              <td className="px-3 py-2.5">
+                {canManage ? (
+                  <Select
+                    className="h-8 w-auto py-0 text-xs"
+                    value={t.area_id ?? ''}
+                    onChange={(e) => changeArea.mutate({ teamId: t.id, areaId: e.target.value })}
+                  >
+                    <option value="">Sem area vinculada</option>
+                    {(areas.data ?? []).filter((a) => a.is_active || a.id === t.area_id).map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </Select>
+                ) : (
+                  <span className="text-sm">{(areas.data ?? []).find((a) => a.id === t.area_id)?.name ?? '—'}</span>
+                )}
+              </td>
               <td className="px-3 py-2.5 tabular-nums">{t.weekly_capacity_hours} h</td>
               <td className="px-3 py-2.5 tabular-nums">{t.max_allocation_pct}%</td>
             </tr>
@@ -916,6 +1088,489 @@ function TeamsTab() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+const blankBusinessUnit = { company_id: '', code: '', name: '' };
+
+function GerenciasTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const canManage = can('portfolio.manage');
+  const [open, setOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<BusinessUnit | null>(null);
+  const [form, setForm] = useState(blankBusinessUnit);
+  const [toggleTarget, setToggleTarget] = useState<BusinessUnit | null>(null);
+
+  const { data = [], isLoading } = useQuery({ queryKey: ['business-units'], queryFn: listBusinessUnits });
+  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: open || Boolean(editTarget) });
+  const companyName = useMemo(
+    () => new Map((companies.data ?? []).map((c) => [c.id, c.name])),
+    [companies.data],
+  );
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.company_id) throw new Error('Selecione a empresa.');
+      if (!form.code.trim() || !form.name.trim()) throw new Error('Informe codigo e nome.');
+      if (editTarget) {
+        await updateBusinessUnit(editTarget.id, {
+          company_id: form.company_id, code: form.code.trim().toUpperCase(), name: form.name.trim(),
+        });
+      } else {
+        await createBusinessUnit({
+          company_id: form.company_id, code: form.code.trim().toUpperCase(), name: form.name.trim(),
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-units'] });
+      toast.success(editTarget ? 'Gerencia atualizada' : 'Gerencia criada', 'A alteracao foi registrada na trilha de auditoria.');
+      setOpen(false);
+      setEditTarget(null);
+      setForm(blankBusinessUnit);
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: () => setBusinessUnitActive(toggleTarget!.id, !toggleTarget!.active),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-units'] });
+      toast.success(toggleTarget?.active ? 'Gerencia inativada' : 'Gerencia ativada', 'A alteracao foi registrada na trilha de auditoria.');
+      setToggleTarget(null);
+    },
+    onError: (e) => toast.error('Nao foi possivel alterar a situacao', describeError(e)),
+  });
+
+  function openCreate() { setForm(blankBusinessUnit); setEditTarget(null); setOpen(true); }
+  function openEdit(bu: BusinessUnit) {
+    setForm({ company_id: bu.company_id, code: bu.code, name: bu.name });
+    setEditTarget(bu);
+    setOpen(true);
+  }
+
+  if (isLoading) return <Spinner />;
+
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Gerencia e' o nivel organizacional acima de Area - cada Area pertence a uma Gerencia.
+        </p>
+        {canManage && (
+          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>Nova Gerencia</Button>
+        )}
+      </div>
+
+      {data.length === 0 ? (
+        <EmptyState
+          title="Nenhuma gerencia cadastrada"
+          description={canManage ? 'Cadastre a primeira gerencia para poder criar Areas.' : undefined}
+        />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-surface-2">
+              <tr>
+                {['Gerencia', 'Codigo', 'Empresa', 'Situacao', ''].map((h) => (
+                  <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((bu) => (
+                <tr key={bu.id} className="border-t border-border">
+                  <td className="px-3 py-2.5 font-medium">{bu.name}</td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-muted">{bu.code}</td>
+                  <td className="px-3 py-2.5 text-muted">{companyName.get(bu.company_id) ?? '—'}</td>
+                  <td className="px-3 py-2.5">
+                    {bu.active ? <Badge tone="ok">Ativa</Badge> : <Badge tone="neutral">Inativa</Badge>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {canManage && (
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(bu)}>
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={bu.active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                          onClick={() => setToggleTarget(bu)}
+                        >
+                          {bu.active ? 'Inativar' : 'Ativar'}
+                        </Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editTarget ? 'Editar gerencia' : 'Nova gerencia'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Empresa" required className="sm:col-span-2">
+            <Select aria-label="Empresa" value={form.company_id} onChange={(e) => setForm((f) => ({ ...f, company_id: e.target.value }))}>
+              <option value="">Selecione...</option>
+              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Codigo" required hint="Identificador curto, ex.: CTB">
+            <Input aria-label="Codigo" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+          </Field>
+          <Field label="Nome" required>
+            <Input aria-label="Nome" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </Field>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(toggleTarget)}
+        onClose={() => setToggleTarget(null)}
+        onConfirm={() => toggleActive.mutate()}
+        loading={toggleActive.isPending}
+        danger={Boolean(toggleTarget?.active)}
+        title={toggleTarget?.active ? 'Inativar gerencia' : 'Ativar gerencia'}
+        confirmLabel={toggleTarget?.active ? 'Inativar' : 'Ativar'}
+        description={
+          toggleTarget?.active
+            ? <>As Areas ja vinculadas a <b>{toggleTarget?.name}</b> continuam existindo, mas ela deixa de aparecer como opcao para novas Areas.</>
+            : <><b>{toggleTarget?.name}</b> volta a aparecer como opcao para novas Areas.</>
+        }
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+const blankArea = { business_unit_id: '', code: '', name: '', description: '', manager_user_id: '' };
+
+function AreasTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const canManage = can('portfolio.manage');
+  const table = useTableState('settings-areas');
+
+  const [open, setOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<AreaWithRelations | null>(null);
+  const [form, setForm] = useState(blankArea);
+  const [toggleTarget, setToggleTarget] = useState<AreaWithRelations | null>(null);
+  const [linksTarget, setLinksTarget] = useState<AreaWithRelations | null>(null);
+  const [businessUnitFilter, setBusinessUnitFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  const areasQuery = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+  const businessUnits = useQuery({ queryKey: ['business-units'], queryFn: listBusinessUnits });
+  const profiles = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles });
+  const activeProfiles = useQuery({
+    queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open || Boolean(editTarget),
+  });
+  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams });
+
+  const rows = useMemo(() => (areasQuery.data ?? []).filter((a) => {
+    if (businessUnitFilter && a.business_unit_id !== businessUnitFilter) return false;
+    if (statusFilter === 'ativa' && !a.is_active) return false;
+    if (statusFilter === 'inativa' && a.is_active) return false;
+    return true;
+  }), [areasQuery.data, businessUnitFilter, statusFilter]);
+
+  const collaboratorCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of profiles.data ?? []) {
+      if (!p.area_id || !p.active) continue;
+      map.set(p.area_id, (map.get(p.area_id) ?? 0) + 1);
+    }
+    return map;
+  }, [profiles.data]);
+
+  const teamCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of teams.data ?? []) {
+      if (!t.area_id) continue;
+      map.set(t.area_id, (map.get(t.area_id) ?? 0) + 1);
+    }
+    return map;
+  }, [teams.data]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.business_unit_id) throw new Error('Selecione a gerencia.');
+      if (!form.code.trim() || !form.name.trim()) throw new Error('Informe codigo e nome.');
+      const input = {
+        business_unit_id: form.business_unit_id,
+        code: form.code.trim().toUpperCase(),
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        manager_user_id: form.manager_user_id || null,
+      };
+      if (editTarget) await updateArea(editTarget.id, input);
+      else await createArea(input);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['areas'] });
+      toast.success(editTarget ? 'Area atualizada' : 'Area criada', 'A alteracao foi registrada na trilha de auditoria.');
+      setOpen(false);
+      setEditTarget(null);
+      setForm(blankArea);
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: () => setAreaActive(toggleTarget!.id, !toggleTarget!.is_active),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['areas'] });
+      toast.success(toggleTarget?.is_active ? 'Area inativada' : 'Area ativada', 'A alteracao foi registrada na trilha de auditoria.');
+      setToggleTarget(null);
+    },
+    onError: (e) => toast.error('Nao foi possivel alterar a situacao', describeError(e)),
+  });
+
+  function openCreate() { setForm(blankArea); setEditTarget(null); setOpen(true); }
+  function openEdit(a: AreaWithRelations) {
+    setForm({
+      business_unit_id: a.business_unit_id, code: a.code, name: a.name,
+      description: a.description ?? '', manager_user_id: a.manager_user_id ?? '',
+    });
+    setEditTarget(a);
+    setOpen(true);
+  }
+
+  const columns = useMemo<ColumnDef<AreaWithRelations, unknown>[]>(() => [
+    {
+      accessorKey: 'name', header: 'Area', meta: { label: 'Area' }, size: 220,
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{row.original.name}</p>
+          <p className="font-mono text-xs text-muted">{row.original.code}</p>
+        </div>
+      ),
+    },
+    {
+      id: 'business_unit', header: 'Gerencia', meta: { label: 'Gerencia' }, size: 180,
+      accessorFn: (row) => row.business_unit?.name ?? '',
+      cell: ({ getValue }) => <span className="text-sm">{(getValue() as string) || '—'}</span>,
+    },
+    {
+      id: 'manager', header: 'Gestor', meta: { label: 'Gestor' }, size: 180,
+      accessorFn: (row) => row.manager?.full_name ?? '',
+      cell: ({ getValue }) => <span className="text-sm text-muted">{(getValue() as string) || '—'}</span>,
+    },
+    {
+      id: 'collaborators', header: 'Colaboradores', meta: { label: 'Colaboradores', exportType: 'integer' }, size: 130,
+      accessorFn: (row) => collaboratorCount.get(row.id) ?? 0,
+      cell: ({ getValue }) => <span className="tabular-nums text-sm">{getValue() as number}</span>,
+    },
+    {
+      id: 'status', header: 'Situacao', meta: { label: 'Situacao' }, size: 110,
+      accessorFn: (row) => (row.is_active ? 'Ativa' : 'Inativa'),
+      cell: ({ row }) => (row.original.is_active ? <Badge tone="ok">Ativa</Badge> : <Badge tone="neutral">Inativa</Badge>),
+    },
+    {
+      id: 'actions', header: '', meta: { label: 'Acoes', exportable: false }, size: 220, enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          <Button
+            variant="ghost" size="sm" icon={<Link2 className="h-3.5 w-3.5" />}
+            onClick={() => setLinksTarget(row.original)}
+          >
+            Vinculos
+          </Button>
+          {canManage && (
+            <>
+              <Button variant="ghost" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(row.original)}>
+                Editar
+              </Button>
+              <Button
+                variant="ghost" size="sm"
+                icon={row.original.is_active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                onClick={() => setToggleTarget(row.original)}
+              >
+                {row.original.is_active ? 'Inativar' : 'Ativar'}
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [collaboratorCount, canManage]);
+
+  if (areasQuery.isError) {
+    return <ErrorState message={(areasQuery.error as Error).message} onRetry={() => areasQuery.refetch()} />;
+  }
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Area e' o nivel organizacional entre Gerencia e Equipe/Colaborador. Cada colaborador ativo
+          deve ter uma Area principal vinculada no cadastro de Usuarios.
+        </p>
+        {canManage && (
+          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />} disabled={(businessUnits.data ?? []).length === 0}>
+            Nova Area
+          </Button>
+        )}
+      </div>
+
+      {!areasQuery.isLoading && (businessUnits.data ?? []).length === 0 && (
+        <div className="mb-3 rounded-lg border border-warn/40 bg-warn/10 p-3 text-xs text-warn">
+          Nenhuma Gerencia cadastrada ainda - crie uma na aba <b>Gerencias</b> antes de cadastrar Areas.
+        </div>
+      )}
+
+      <DataTable<AreaWithRelations>
+        data={rows}
+        columns={columns}
+        loading={areasQuery.isLoading}
+        state={table.state}
+        onStateChange={table.onStateChange}
+        getRowId={(row) => row.id}
+        exportFileName="areas"
+        emptyTitle="Nenhuma area cadastrada"
+        emptyDescription={canManage ? 'Cadastre a primeira area para vincular colaboradores.' : undefined}
+        toolbarExtra={
+          <>
+            <Select
+              className="w-auto" value={businessUnitFilter}
+              onChange={(e) => setBusinessUnitFilter(e.target.value)} aria-label="Filtrar por gerencia"
+            >
+              <option value="">Todas as gerencias</option>
+              {(businessUnits.data ?? []).map((bu) => <option key={bu.id} value={bu.id}>{bu.name}</option>)}
+            </Select>
+            <Select
+              className="w-auto" value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filtrar por situacao"
+            >
+              <option value="">Ativas e inativas</option>
+              <option value="ativa">Somente ativas</option>
+              <option value="inativa">Somente inativas</option>
+            </Select>
+          </>
+        }
+      />
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editTarget ? 'Editar area' : 'Nova area'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Gerencia" required className="sm:col-span-2">
+            <Select aria-label="Gerencia" value={form.business_unit_id} onChange={(e) => setForm((f) => ({ ...f, business_unit_id: e.target.value }))}>
+              <option value="">Selecione...</option>
+              {(businessUnits.data ?? []).filter((bu) => bu.active || bu.id === form.business_unit_id).map((bu) => (
+                <option key={bu.id} value={bu.id}>{bu.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Codigo" required hint="Unico dentro da gerencia, ex.: CTG">
+            <Input aria-label="Codigo" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+          </Field>
+          <Field label="Nome" required>
+            <Input aria-label="Nome" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </Field>
+          <Field label="Gestor da area">
+            <Select aria-label="Gestor da area" value={form.manager_user_id} onChange={(e) => setForm((f) => ({ ...f, manager_user_id: e.target.value }))}>
+              <option value="">Nao informado</option>
+              {(activeProfiles.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Descricao" className="sm:col-span-2">
+            <Textarea aria-label="Descricao da area" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </Field>
+          {editTarget && (
+            <p className="text-xs text-muted sm:col-span-2">
+              Criada em {formatDateTime(editTarget.created_at)} · ultima alteracao em {formatDateTime(editTarget.updated_at)}
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(toggleTarget)}
+        onClose={() => setToggleTarget(null)}
+        onConfirm={() => toggleActive.mutate()}
+        loading={toggleActive.isPending}
+        danger={Boolean(toggleTarget?.is_active)}
+        title={toggleTarget?.is_active ? 'Inativar area' : 'Ativar area'}
+        confirmLabel={toggleTarget?.is_active ? 'Inativar' : 'Ativar'}
+        description={
+          toggleTarget?.is_active
+            ? <>Colaboradores e equipes ja vinculados a <b>{toggleTarget?.name}</b> continuam vinculados, mas ela deixa de aparecer como opcao para novos vinculos.</>
+            : <><b>{toggleTarget?.name}</b> volta a aparecer como opcao para novos vinculos.</>
+        }
+      />
+
+      <Modal
+        open={Boolean(linksTarget)}
+        onClose={() => setLinksTarget(null)}
+        title={`Vinculos de ${linksTarget?.name ?? ''}`}
+        size="sm"
+        footer={<Button onClick={() => setLinksTarget(null)}>Fechar</Button>}
+      >
+        {linksTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-surface-2 p-3">
+              <p className="flex items-center gap-2 text-xs font-semibold text-muted">
+                <Building2 className="h-3.5 w-3.5" /> Gerencia
+              </p>
+              <p className="mt-1 text-sm">{linksTarget.business_unit?.name ?? '—'}</p>
+            </div>
+            <div>
+              <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted">
+                <Users className="h-3.5 w-3.5" /> Colaboradores ativos ({collaboratorCount.get(linksTarget.id) ?? 0})
+              </p>
+              {(profiles.data ?? []).filter((p) => p.area_id === linksTarget.id && p.active).length === 0 ? (
+                <p className="text-xs text-muted">Nenhum colaborador ativo vinculado.</p>
+              ) : (
+                <ul className="max-h-40 divide-y divide-border overflow-y-auto text-sm">
+                  {(profiles.data ?? []).filter((p) => p.area_id === linksTarget.id && p.active).map((p) => (
+                    <li key={p.id} className="py-1.5">{p.full_name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-muted">Equipes ({teamCount.get(linksTarget.id) ?? 0})</p>
+              {(teams.data ?? []).filter((t) => t.area_id === linksTarget.id).length === 0 ? (
+                <p className="text-xs text-muted">Nenhuma equipe vinculada.</p>
+              ) : (
+                <ul className="max-h-40 divide-y divide-border overflow-y-auto text-sm">
+                  {(teams.data ?? []).filter((t) => t.area_id === linksTarget.id).map((t) => (
+                    <li key={t.id} className="py-1.5">{t.name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 

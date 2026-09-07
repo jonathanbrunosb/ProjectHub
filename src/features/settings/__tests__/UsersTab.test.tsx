@@ -14,16 +14,34 @@ vi.mock('@/app/AuthProvider', () => ({
 }));
 
 const profiles = [
-  { id: 'admin-1', full_name: 'Admin Um', email: 'admin@empresa.com.br', job_title: 'PMO', role: 'admin', can_switch_environment: true, weekly_capacity_hours: 40, active: true },
-  { id: 'user-2', full_name: 'Colaborador Dois', email: 'colab@empresa.com.br', job_title: null, role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: true },
+  { id: 'admin-1', full_name: 'Admin Um', email: 'admin@empresa.com.br', job_title: 'PMO', role: 'admin', can_switch_environment: true, weekly_capacity_hours: 40, active: true, area_id: 'area-1' },
+  { id: 'user-2', full_name: 'Colaborador Dois', email: 'colab@empresa.com.br', job_title: null, role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: true, area_id: null },
+];
+
+const areas = [
+  {
+    id: 'area-1', business_unit_id: 'bu-1', code: 'CTG', name: 'Contabilidade Geral', is_active: true,
+    business_unit: { id: 'bu-1', name: 'Contabilidade Corporativa', code: 'CTB' },
+  },
 ];
 
 const listProfiles = vi.fn(async () => profiles);
 vi.mock('@/services/projects', () => ({
   listProfiles: (...args: []) => listProfiles(...args),
+  listActiveProfiles: vi.fn(async () => profiles),
   listCompanies: vi.fn(async () => []),
   listTeams: vi.fn(async () => []),
   listTemplates: vi.fn(async () => []),
+}));
+
+const listAreas = vi.fn(async () => areas);
+const assignPrimaryArea = vi.fn(async (_userId: string, _areaId: string) => {});
+vi.mock('@/services/areas', () => ({
+  listAreas: (...a: []) => listAreas(...a),
+  assignPrimaryArea: (...a: [string, string]) => assignPrimaryArea(...a),
+  listBusinessUnits: vi.fn(async () => []),
+  createBusinessUnit: vi.fn(), updateBusinessUnit: vi.fn(), setBusinessUnitActive: vi.fn(),
+  createArea: vi.fn(), updateArea: vi.fn(), setAreaActive: vi.fn(), updateTeamArea: vi.fn(),
 }));
 
 vi.mock('@/services/customFields', () => ({
@@ -35,8 +53,9 @@ vi.mock('@/services/governance', () => ({ refreshAllHealth: vi.fn() }));
 
 const resetUserPassword = vi.fn();
 const deleteUser = vi.fn();
+const createUser = vi.fn(async (_input: unknown) => ({ id: 'new-user', email: 'novo@empresa.com.br', temporary_password: 'Abc12345!' }));
 vi.mock('@/services/adminUsers', () => ({
-  createUser: vi.fn(),
+  createUser: (...a: [unknown]) => createUser(...a),
   resetUserPassword: (userId: string) => resetUserPassword(userId),
   deleteUser: (userId: string) => deleteUser(userId),
 }));
@@ -72,6 +91,9 @@ beforeEach(() => {
   update.mockClear();
   listProfiles.mockClear();
   listProfiles.mockImplementation(async () => profiles);
+  listAreas.mockClear().mockImplementation(async () => areas);
+  assignPrimaryArea.mockClear();
+  createUser.mockClear().mockImplementation(async () => ({ id: 'new-user', email: 'novo@empresa.com.br', temporary_password: 'Abc12345!' }));
 });
 
 describe('redefinicao de senha pelo Admin', () => {
@@ -183,7 +205,7 @@ describe('ativar / inativar usuario', () => {
       ...profiles,
       {
         id: 'user-3', full_name: 'Ex Colaborador', email: 'ex@empresa.com.br', job_title: null,
-        role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: false,
+        role: 'collaborator', can_switch_environment: false, weekly_capacity_hours: 40, active: false, area_id: null,
       },
     ]);
     render();
@@ -219,5 +241,57 @@ describe('excluir usuario', () => {
     await userEvent.type(screen.getByLabelText('Confirmacao'), 'colab@empresa.com.br');
     await userEvent.click(lastOf(screen.getAllByRole('button', { name: /^excluir$/i })));
     await waitFor(() => expect(deleteUser).toHaveBeenCalledWith('user-2'));
+  });
+});
+
+describe('vinculo obrigatorio de Area (item 6/8)', () => {
+  it('mostra a Area de quem ja tem vinculo e a pendencia de quem nao tem', async () => {
+    render();
+    const linhaAdmin = await screen.findByText('Admin Um').then((el) => el.closest('tr')!);
+    expect(within(linhaAdmin).getByText('Contabilidade Geral')).toBeInTheDocument();
+    const linhaColab = screen.getByText('Colaborador Dois').closest('tr')!;
+    expect(within(linhaColab).getByText(/sem area/i)).toBeInTheDocument();
+  });
+
+  it('alerta quantos colaboradores ativos estao sem Area, com atalho para filtrar', async () => {
+    render();
+    expect(await screen.findByText(/sem Area principal vinculada/i)).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /ver e vincular/i }));
+    // Com o filtro de pendencia aplicado, so' Colaborador Dois (sem area) permanece na tabela.
+    expect(screen.getByText('Colaborador Dois')).toBeInTheDocument();
+    expect(screen.queryByText('Admin Um')).toBeNull();
+  });
+
+  it('bloqueia o cadastro de novo usuario sem selecionar a Area', async () => {
+    render();
+    await userEvent.click(await screen.findByRole('button', { name: /adicionar usu.rio/i }));
+    await userEvent.type(await screen.findByLabelText(/nome completo/i), 'Novo Usuario');
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'novo@empresa.com.br');
+    await userEvent.click(screen.getByRole('button', { name: /^cadastrar$/i }));
+
+    await waitFor(() => expect(screen.getByText(/selecione a area/i)).toBeInTheDocument());
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('vincula a Area escolhida logo apos criar o usuario', async () => {
+    render();
+    await userEvent.click(await screen.findByRole('button', { name: /adicionar usu.rio/i }));
+    await userEvent.type(await screen.findByLabelText(/nome completo/i), 'Novo Usuario');
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'novo@empresa.com.br');
+    await userEvent.selectOptions(screen.getByLabelText(/^area$/i), 'area-1');
+    await userEvent.click(screen.getByRole('button', { name: /^cadastrar$/i }));
+
+    await waitFor(() => expect(createUser).toHaveBeenCalled());
+    await waitFor(() => expect(assignPrimaryArea).toHaveBeenCalledWith('new-user', 'area-1'));
+  });
+
+  it('editar usuario so abre novo vinculo de Area quando ela realmente muda', async () => {
+    render();
+    const botoes = await screen.findAllByRole('button', { name: /^editar$/i });
+    await userEvent.click(botoes[0]); // Admin Um, ja vinculado a area-1
+    await userEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
+    await waitFor(() => expect(updateEq).toHaveBeenCalledWith('id', 'admin-1'));
+    expect(assignPrimaryArea).not.toHaveBeenCalled();
   });
 });
