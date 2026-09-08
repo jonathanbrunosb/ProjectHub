@@ -194,11 +194,44 @@ export async function listActiveProfiles(): Promise<Profile[]> {
   return (data ?? []) as unknown as Profile[];
 }
 
+const COMPANY_COLUMNS = 'id,code,name,cnpj,active';
+
+/** Empresas ativas, usadas nos seletores de novos vinculos. */
 export async function listCompanies(): Promise<Company[]> {
   const { data, error } = await supabase
-    .from('companies').select('id,code,name,active').eq('active', true).order('name');
+    .from('companies').select(COMPANY_COLUMNS).eq('active', true).order('name');
   if (error) throw error;
   return (data ?? []) as unknown as Company[];
+}
+
+/** Todas as empresas, inclusive inativas, para a tela de administracao. */
+export async function listAllCompanies(): Promise<Company[]> {
+  const { data, error } = await supabase
+    .from('companies').select(COMPANY_COLUMNS).order('name');
+  if (error) throw error;
+  return (data ?? []) as unknown as Company[];
+}
+
+export interface CompanyInput {
+  code: string;
+  name: string;
+  cnpj: string | null;
+}
+
+export async function createCompany(input: CompanyInput): Promise<string> {
+  const { data, error } = await supabase.from('companies').insert(input).select('id').single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+export async function updateCompany(id: string, patch: Partial<CompanyInput>): Promise<void> {
+  const { error } = await supabase.from('companies').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function setCompanyActive(id: string, active: boolean): Promise<void> {
+  const { error } = await supabase.from('companies').update({ active }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function listTemplates(): Promise<ProjectTemplate[]> {

@@ -30,6 +30,8 @@ vi.mock('@/services/projects', () => ({
   listProfiles: (...args: []) => listProfiles(...args),
   listActiveProfiles: vi.fn(async () => profiles),
   listCompanies: vi.fn(async () => []),
+  listAllCompanies: vi.fn(async () => []),
+  createCompany: vi.fn(), updateCompany: vi.fn(), setCompanyActive: vi.fn(),
   listTemplates: vi.fn(async () => []),
 }));
 

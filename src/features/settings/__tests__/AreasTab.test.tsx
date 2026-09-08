@@ -48,6 +48,11 @@ const profiles = [
   { id: 'user-2', full_name: 'Colaborador Dois', email: 'colab@empresa.com.br', area_id: null, active: true },
 ];
 
+const companies = [
+  { id: 'co-1', code: 'HOLD', name: 'Holding Corporativa', cnpj: '12345678000190', active: true },
+  { id: 'co-2', code: 'LEG', name: 'Empresa Legada', cnpj: null, active: false },
+];
+
 const listBusinessUnits = vi.fn(async () => businessUnits);
 const createBusinessUnit = vi.fn(async (_input: unknown) => 'bu-new');
 const updateBusinessUnit = vi.fn(async (_id: string, _patch: unknown) => {});
@@ -57,6 +62,10 @@ const createArea = vi.fn(async (_input: unknown) => 'area-new');
 const updateArea = vi.fn(async (_id: string, _patch: unknown) => {});
 const setAreaActive = vi.fn(async (_id: string, _active: boolean) => {});
 const assignPrimaryArea = vi.fn(async (_userId: string, _areaId: string) => {});
+const listAllCompanies = vi.fn(async () => companies);
+const createCompany = vi.fn(async (_input: unknown) => 'co-new');
+const updateCompany = vi.fn(async (_id: string, _patch: unknown) => {});
+const setCompanyActive = vi.fn(async (_id: string, _active: boolean) => {});
 
 vi.mock('@/services/areas', () => ({
   listBusinessUnits: (...a: []) => listBusinessUnits(...a),
@@ -73,7 +82,11 @@ vi.mock('@/services/areas', () => ({
 vi.mock('@/services/projects', () => ({
   listProfiles: vi.fn(async () => profiles),
   listActiveProfiles: vi.fn(async () => profiles),
-  listCompanies: vi.fn(async () => [{ id: 'co-1', code: 'HOLD', name: 'Holding Corporativa', active: true }]),
+  listCompanies: vi.fn(async () => companies.filter((company) => company.active)),
+  listAllCompanies: (...a: []) => listAllCompanies(...a),
+  createCompany: (...a: [unknown]) => createCompany(...a),
+  updateCompany: (...a: [string, unknown]) => updateCompany(...a),
+  setCompanyActive: (...a: [string, boolean]) => setCompanyActive(...a),
   listTemplates: vi.fn(async () => []),
 }));
 
@@ -89,6 +102,14 @@ const { SettingsPage } = await import('../SettingsPage');
 function renderGerencias() {
   return renderWithProviders(
     <MemoryRouter initialEntries={['/configuracoes/gerencias']}>
+      <SettingsPage />
+    </MemoryRouter>,
+  );
+}
+
+function renderEmpresas() {
+  return renderWithProviders(
+    <MemoryRouter initialEntries={['/configuracoes/empresas']}>
       <SettingsPage />
     </MemoryRouter>,
   );
@@ -120,6 +141,41 @@ beforeEach(() => {
   updateArea.mockClear();
   setAreaActive.mockClear();
   assignPrimaryArea.mockClear();
+  listAllCompanies.mockClear().mockImplementation(async () => companies);
+  createCompany.mockClear();
+  updateCompany.mockClear();
+  setCompanyActive.mockClear();
+});
+
+describe('aba Empresas', () => {
+  it('lista empresas ativas e inativas com CNPJ formatado', async () => {
+    renderEmpresas();
+    expect(await screen.findByText('Holding Corporativa')).toBeInTheDocument();
+    expect(screen.getByText('12.345.678/0001-90')).toBeInTheDocument();
+    const linhaInativa = screen.getByText('Empresa Legada').closest('tr')!;
+    expect(within(linhaInativa).getByText(/inativa/i)).toBeInTheDocument();
+  });
+
+  it('cria uma nova empresa', async () => {
+    renderEmpresas();
+    await userEvent.click(await screen.findByRole('button', { name: /nova empresa/i }));
+    await userEvent.type(screen.getByLabelText(/codigo/i), 'eqtl');
+    await userEvent.type(screen.getByLabelText(/cnpj/i), '12345678000190');
+    await userEvent.type(screen.getByLabelText(/^nome$/i), 'Equatorial Energia');
+    await userEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
+
+    await waitFor(() => expect(createCompany).toHaveBeenCalledWith({
+      code: 'EQTL', name: 'Equatorial Energia', cnpj: '12345678000190',
+    }));
+  });
+
+  it('pede confirmacao antes de inativar uma empresa', async () => {
+    renderEmpresas();
+    const botao = await screen.findByRole('button', { name: /^inativar$/i });
+    await userEvent.click(botao);
+    expect(await screen.findByText(/vinculos existentes/i)).toBeInTheDocument();
+    expect(setCompanyActive).not.toHaveBeenCalled();
+  });
 });
 
 describe('aba Gerencias', () => {

@@ -26,7 +26,8 @@ import {
   deleteDefinition, listAllDefinitions, replaceOptions, upsertDefinition,
 } from '@/services/customFields';
 import {
-  listActiveProfiles, listCompanies, listProfiles, listTemplates, updateTemplateFinancialDefault,
+  createCompany, listActiveProfiles, listAllCompanies, listProfiles, listTemplates,
+  setCompanyActive, updateCompany, updateTemplateFinancialDefault,
 } from '@/services/projects';
 import {
   assignPrimaryArea, createArea, createBusinessUnit, listAreas, listBusinessUnits, setAreaActive,
@@ -39,7 +40,7 @@ import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type 
 import { financialModeLabel, roleDescription, roleLabel } from '@/utils/domain-labels';
 import { formatDate, formatDateTime } from '@/utils/format';
 import type {
-  BusinessUnit, CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
+  BusinessUnit, Company, CustomFieldDefinition, CustomFieldScope, CustomFieldType, FinancialModuleMode, Profile, RoleKey,
 } from '@/types/domain';
 
 const TABS = [
@@ -47,6 +48,7 @@ const TABS = [
   { key: 'usuarios', label: 'Usuarios & Permissoes' },
   { key: 'campos', label: 'Campos personalizados' },
   { key: 'templates', label: 'Templates' },
+  { key: 'empresas', label: 'Empresas' },
   { key: 'gerencias', label: 'Gerencias' },
   { key: 'areas', label: 'Areas' },
   { key: 'modulos', label: 'Modulos' },
@@ -68,7 +70,7 @@ export function SettingsPage() {
 
   const visible = TABS.filter((t) => {
     if (t.key === 'usuarios' || t.key === 'sistema') return can('users.manage') || can('settings.manage');
-    if (t.key === 'campos' || t.key === 'templates' || t.key === 'gerencias' || t.key === 'areas') {
+    if (t.key === 'campos' || t.key === 'templates' || t.key === 'empresas' || t.key === 'gerencias' || t.key === 'areas') {
       return can('portfolio.manage');
     }
     if (t.key === 'modulos') return can('financial_module.manage');
@@ -87,6 +89,7 @@ export function SettingsPage() {
       {tab === 'usuarios' && <UsersTab />}
       {tab === 'campos' && <CustomFieldsTab />}
       {tab === 'templates' && <TemplatesTab />}
+      {tab === 'empresas' && <EmpresasTab />}
       {tab === 'gerencias' && <GerenciasTab />}
       {tab === 'areas' && <AreasTab />}
       {tab === 'modulos' && <ModulosTab />}
@@ -197,7 +200,7 @@ function UsersTab() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; email: string } | null>(null);
   const [areaFilter, setAreaFilter] = useState('');
 
-  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: inviteOpen || Boolean(editTarget) });
+  const companies = useQuery({ queryKey: ['companies', 'all'], queryFn: listAllCompanies, enabled: inviteOpen || Boolean(editTarget) });
   const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas });
 
   const areaById = useMemo(() => new Map((areas.data ?? []).map((a) => [a.id, a])), [areas.data]);
@@ -506,7 +509,7 @@ function UsersTab() {
           <Field label="Empresa">
             <Select value={inviteForm.company_id} onChange={(e) => setInviteForm((f) => ({ ...f, company_id: e.target.value }))}>
               <option value="">Nao informado</option>
-              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(companies.data ?? []).filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
           <Field
@@ -644,7 +647,9 @@ function UsersTab() {
           <Field label="Empresa">
             <Select value={editForm.company_id} onChange={(e) => setEditForm((f) => ({ ...f, company_id: e.target.value }))}>
               <option value="">Nao informado</option>
-              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(companies.data ?? []).filter((c) => c.active || c.id === editForm.company_id).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (inativa)'}</option>
+              ))}
             </Select>
           </Field>
           <Field
@@ -981,6 +986,178 @@ function TemplatesTab() {
 }
 
 // ---------------------------------------------------------------------------
+const blankCompany = { code: '', name: '', cnpj: '' };
+
+function displayCnpj(value: string | null): string {
+  if (!value) return '—';
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 14) return value;
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}
+
+function EmpresasTab() {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const canManage = can('portfolio.manage');
+  const [open, setOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Company | null>(null);
+  const [form, setForm] = useState(blankCompany);
+  const [toggleTarget, setToggleTarget] = useState<Company | null>(null);
+
+  const companies = useQuery({ queryKey: ['companies', 'all'], queryFn: listAllCompanies });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const code = form.code.trim().toUpperCase();
+      const name = form.name.trim();
+      if (!code || !name) throw new Error('Informe codigo e nome.');
+      if (code.length < 2 || code.length > 20) throw new Error('O codigo deve ter entre 2 e 20 caracteres.');
+      const input = { code, name, cnpj: form.cnpj.trim() || null };
+      if (editTarget) await updateCompany(editTarget.id, input);
+      else await createCompany(input);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success(editTarget ? 'Empresa atualizada' : 'Empresa criada');
+      setOpen(false);
+      setEditTarget(null);
+      setForm(blankCompany);
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: () => setCompanyActive(toggleTarget!.id, !toggleTarget!.active),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success(toggleTarget?.active ? 'Empresa inativada' : 'Empresa ativada');
+      setToggleTarget(null);
+    },
+    onError: (e) => toast.error('Nao foi possivel alterar a situacao', describeError(e)),
+  });
+
+  function openCreate() {
+    setForm(blankCompany);
+    setEditTarget(null);
+    setOpen(true);
+  }
+
+  function openEdit(company: Company) {
+    setForm({ code: company.code, name: company.name, cnpj: company.cnpj ?? '' });
+    setEditTarget(company);
+    setOpen(true);
+  }
+
+  if (companies.isError) {
+    return <ErrorState message={(companies.error as Error).message} onRetry={() => companies.refetch()} />;
+  }
+  if (companies.isLoading) return <Spinner />;
+
+  const data = companies.data ?? [];
+
+  return (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Empresas organizam Gerencias, Areas, colaboradores, projetos e eventos corporativos.
+        </p>
+        {canManage && (
+          <Button onClick={openCreate} icon={<Plus className="h-4 w-4" />}>Nova Empresa</Button>
+        )}
+      </div>
+
+      {data.length === 0 ? (
+        <EmptyState
+          title="Nenhuma empresa cadastrada"
+          description={canManage ? 'Cadastre a primeira empresa para liberar os demais cadastros organizacionais.' : undefined}
+        />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-surface-2">
+              <tr>
+                {['Empresa', 'Codigo', 'CNPJ', 'Situacao', ''].map((heading) => (
+                  <th key={heading} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{heading}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((company) => (
+                <tr key={company.id} className="border-t border-border">
+                  <td className="px-3 py-2.5 font-medium">{company.name}</td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-muted">{company.code}</td>
+                  <td className="px-3 py-2.5 text-muted">{displayCnpj(company.cnpj)}</td>
+                  <td className="px-3 py-2.5">
+                    {company.active ? <Badge tone="ok">Ativa</Badge> : <Badge tone="neutral">Inativa</Badge>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {canManage && (
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openEdit(company)}>
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={company.active ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
+                          onClick={() => setToggleTarget(company)}
+                        >
+                          {company.active ? 'Inativar' : 'Ativar'}
+                        </Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editTarget ? 'Editar empresa' : 'Nova empresa'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Codigo" required hint="Identificador curto, entre 2 e 20 caracteres.">
+            <Input aria-label="Codigo" maxLength={20} value={form.code} onChange={(e) => setForm((current) => ({ ...current, code: e.target.value }))} />
+          </Field>
+          <Field label="CNPJ" hint="Opcional.">
+            <Input aria-label="CNPJ" maxLength={18} value={form.cnpj} onChange={(e) => setForm((current) => ({ ...current, cnpj: e.target.value }))} />
+          </Field>
+          <Field label="Nome" required className="sm:col-span-2">
+            <Input aria-label="Nome" value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} />
+          </Field>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(toggleTarget)}
+        onClose={() => setToggleTarget(null)}
+        onConfirm={() => toggleActive.mutate()}
+        loading={toggleActive.isPending}
+        danger={Boolean(toggleTarget?.active)}
+        title={toggleTarget?.active ? 'Inativar empresa' : 'Ativar empresa'}
+        confirmLabel={toggleTarget?.active ? 'Inativar' : 'Ativar'}
+        description={
+          toggleTarget?.active
+            ? <>Os vinculos existentes com <b>{toggleTarget?.name}</b> serao preservados, mas a empresa deixara de aparecer em novos cadastros.</>
+            : <><b>{toggleTarget?.name}</b> voltara a aparecer como opcao nos cadastros.</>
+        }
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 const blankBusinessUnit = { company_id: '', code: '', name: '' };
 
 function GerenciasTab() {
@@ -994,7 +1171,7 @@ function GerenciasTab() {
   const [toggleTarget, setToggleTarget] = useState<BusinessUnit | null>(null);
 
   const { data = [], isLoading } = useQuery({ queryKey: ['business-units'], queryFn: listBusinessUnits });
-  const companies = useQuery({ queryKey: ['companies'], queryFn: listCompanies, enabled: open || Boolean(editTarget) });
+  const companies = useQuery({ queryKey: ['companies', 'all'], queryFn: listAllCompanies });
   const companyName = useMemo(
     () => new Map((companies.data ?? []).map((c) => [c.id, c.name])),
     [companies.data],
@@ -1117,7 +1294,9 @@ function GerenciasTab() {
           <Field label="Empresa" required className="sm:col-span-2">
             <Select aria-label="Empresa" value={form.company_id} onChange={(e) => setForm((f) => ({ ...f, company_id: e.target.value }))}>
               <option value="">Selecione...</option>
-              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(companies.data ?? []).filter((c) => c.active || c.id === form.company_id).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (inativa)'}</option>
+              ))}
             </Select>
           </Field>
           <Field label="Codigo" required hint="Identificador curto, ex.: CTB">

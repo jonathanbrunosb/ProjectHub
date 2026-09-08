@@ -61,7 +61,13 @@ export interface Profile {
   can_switch_environment: boolean;
 }
 
-export interface Company { id: string; code: string; name: string; active: boolean }
+export interface Company {
+  id: string;
+  code: string;
+  name: string;
+  cnpj: string | null;
+  active: boolean;
+}
 export interface BusinessUnit { id: string; company_id: string; code: string; name: string; active: boolean }
 
 /** Dimensao organizacional Area: filha de business_units (Gerencia), mae de profiles. */
