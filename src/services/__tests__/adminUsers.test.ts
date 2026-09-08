@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const invoke = vi.fn();
 vi.mock('@/lib/supabase/client', () => ({
@@ -40,5 +41,15 @@ describe('createUser (compartilha o mesmo helper de invocacao)', () => {
       body: { email: 'x@y.com', full_name: 'X Y', role: 'collaborator' },
     });
     expect(result.id).toBe('u1');
+  });
+
+  it('mantem a Edge Function alinhada ao schema atual de profiles', () => {
+    const functionSource = readFileSync(
+      new URL('../../../supabase/functions/admin-create-user/index.ts', import.meta.url),
+      'utf8',
+    );
+
+    expect(functionSource).not.toContain('primary_team_id');
+    expect(functionSource).toContain('business_unit_id: businessUnitId || null');
   });
 });
