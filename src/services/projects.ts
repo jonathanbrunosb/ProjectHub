@@ -154,7 +154,7 @@ export interface ProjectMemberRow {
 export async function listProjectMembers(projectId: string): Promise<ProjectMemberRow[]> {
   const { data, error } = await supabase
     .from('project_members')
-    .select('id,project_id,profile_id,project_role,role_label,can_edit,profile:profiles(full_name,email,job_title,area_id,area:areas(name))')
+    .select('id,project_id,profile_id,project_role,role_label,can_edit,profile:profiles(full_name,email,job_title,area_id,area:areas!profiles_area_id_fkey(name))')
     .eq('project_id', projectId)
     .order('project_role');
   if (error) throw error;
