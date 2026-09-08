@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { ChevronLeft, PanelLeft, LineChart } from 'lucide-react';
+import { ChevronLeft, PanelLeft } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { navigation } from './navigation';
 import { useAuth } from '@/app/AuthProvider';
@@ -26,9 +26,7 @@ export function Sidebar({
       >
         <div className={cn('flex h-14 items-center gap-2.5 border-b border-white/10 px-3', collapsed && 'justify-center px-0')}>
           {collapsed ? (
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-brand-fg">
-              <LineChart className="h-4 w-4" />
-            </div>
+            <GroupLogo className="h-8 w-12 max-w-12 shrink-0" textSize="text-[7px]" variant="light" />
           ) : (
             <>
               <GroupLogo className="h-6 max-w-[88px] shrink-0" textSize="text-[9px]" variant="light" />
