@@ -295,7 +295,7 @@ describe('vinculo obrigatorio de Area (item 6/8)', () => {
     await userEvent.selectOptions(screen.getByLabelText(/papel de acesso/i), 'pmo');
 
     expect(screen.queryByLabelText(/^area$/i)).toBeNull();
-    expect(screen.getByDisplayValue(/todas as areas/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/abrangencia de areas/i)).toHaveValue('Todas as areas');
     expect(screen.getByText(/nao precisa de uma Area principal/i)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /^cadastrar$/i }));
