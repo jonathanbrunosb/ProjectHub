@@ -161,7 +161,7 @@ export const roleLabel: Record<RoleKey, string> = {
 
 export const roleDescription: Record<RoleKey, string> = {
   admin: 'Acesso integral ao sistema e a configuracao.',
-  pmo: 'Acesso corporativo ao portfolio, dashboards, templates e relatorios.',
+  pmo: 'Acesso corporativo a todas as areas, ao portfolio, dashboards, templates e relatorios; nao exige Area principal.',
   sponsor: 'Visao executiva e registro de decisoes/aprovacoes dos projetos patrocinados.',
   project_owner: 'Gestao completa dos projetos sob sua responsabilidade.',
   collaborator: 'Execucao nos projetos e tarefas em que participa.',

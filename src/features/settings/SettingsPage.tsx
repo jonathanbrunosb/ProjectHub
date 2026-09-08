@@ -143,12 +143,18 @@ function ProfileTab() {
 
       <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm">
         <p className="text-xs font-semibold text-muted">Area organizacional</p>
-        {myArea ? (
+        {profile.role === 'pmo' ? (
+          <p className="mt-0.5">Todas as areas <span className="text-xs text-muted">· acesso corporativo de PMO / Gerencia</span></p>
+        ) : myArea ? (
           <p className="mt-0.5">{myArea.name} <span className="text-xs text-muted">· {myArea.business_unit?.name ?? '—'}</span></p>
         ) : (
           <p className="mt-0.5 text-xs text-muted">Nao vinculada - fale com o Admin, PMO ou Sponsor.</p>
         )}
-        <p className="mt-1 text-xs text-muted">Alterada apenas por quem gerencia usuarios, em Configuracoes.</p>
+        <p className="mt-1 text-xs text-muted">
+          {profile.role === 'pmo'
+            ? 'Abrangencia definida pelo perfil de acesso, sem vinculo a uma Area principal.'
+            : 'Alterada apenas por quem gerencia usuarios, em Configuracoes.'}
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -183,6 +189,11 @@ const blankEditForm = {
 /** Pendencia administrativa (item 8): filtro especial, nao um id de area de verdade. */
 const PENDING_AREA_FILTER = '__pending__';
 
+/** PMO / Gerencia possui abrangencia corporativa e nao exige uma Area principal. */
+function requiresPrimaryArea(role: RoleKey) {
+  return role !== 'pmo';
+}
+
 function UsersTab() {
   const { can, profile } = useAuth();
   const toast = useToast();
@@ -205,11 +216,14 @@ function UsersTab() {
 
   const areaById = useMemo(() => new Map((areas.data ?? []).map((a) => [a.id, a])), [areas.data]);
 
-  const pendingArea = useMemo(() => data.filter((p) => p.active && !p.area_id), [data]);
+  const pendingArea = useMemo(
+    () => data.filter((p) => p.active && requiresPrimaryArea(p.role) && !p.area_id),
+    [data],
+  );
 
   const rows = useMemo(() => data.filter((p) => {
     if (!areaFilter) return true;
-    if (areaFilter === PENDING_AREA_FILTER) return p.active && !p.area_id;
+    if (areaFilter === PENDING_AREA_FILTER) return p.active && requiresPrimaryArea(p.role) && !p.area_id;
     return p.area_id === areaFilter;
   }), [data, areaFilter]);
 
@@ -243,7 +257,7 @@ function UsersTab() {
       if (!inviteForm.full_name.trim() || !inviteForm.email.trim()) {
         throw new Error('Informe nome e e-mail.');
       }
-      if (!inviteForm.area_id) {
+      if (requiresPrimaryArea(inviteForm.role) && !inviteForm.area_id) {
         throw new Error('Selecione a Area do colaborador - todo colaborador ativo precisa de uma area principal.');
       }
       const result = await createUser({
@@ -256,7 +270,9 @@ function UsersTab() {
       // A conta ja nasce ativa (ver descricao do modal) - abre o primeiro
       // vinculo de area assim que o profile existe, preservando o historico
       // desde o dia 1 em vez de gravar profiles.area_id diretamente.
-      await assignPrimaryArea(result.id, inviteForm.area_id);
+      if (requiresPrimaryArea(inviteForm.role)) {
+        await assignPrimaryArea(result.id, inviteForm.area_id);
+      }
       return result;
     },
     onSuccess: (result) => {
@@ -387,7 +403,9 @@ function UsersTab() {
                 <td className="px-3 py-2.5"><AvatarWithName name={p.full_name} subtitle={p.email} /></td>
                 <td className="px-3 py-2.5 text-muted">{p.job_title ?? '—'}</td>
                 <td className="px-3 py-2.5">
-                  {p.area_id ? (
+                  {!requiresPrimaryArea(p.role) ? (
+                    <Badge tone="info">Todas as areas</Badge>
+                  ) : p.area_id ? (
                     <span className="text-sm">{areaById.get(p.area_id)?.name ?? '—'}</span>
                   ) : p.active ? (
                     <Badge tone="warn">Sem area</Badge>
@@ -499,7 +517,14 @@ function UsersTab() {
             <Input aria-label="E-mail" type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
           </Field>
           <Field label="Papel de acesso" required>
-            <Select value={inviteForm.role} onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as RoleKey }))}>
+            <Select
+              aria-label="Papel de acesso"
+              value={inviteForm.role}
+              onChange={(e) => {
+                const role = e.target.value as RoleKey;
+                setInviteForm((f) => ({ ...f, role, area_id: requiresPrimaryArea(role) ? f.area_id : '' }));
+              }}
+            >
               {(Object.keys(roleLabel) as RoleKey[]).map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
             </Select>
           </Field>
@@ -512,17 +537,26 @@ function UsersTab() {
               {(companies.data ?? []).filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
-          <Field
-            label="Area" required className="sm:col-span-2"
-            hint="Area organizacional principal do colaborador - obrigatoria."
-          >
-            <Select aria-label="Area" value={inviteForm.area_id} onChange={(e) => setInviteForm((f) => ({ ...f, area_id: e.target.value }))}>
-              <option value="">Selecione...</option>
-              {(areas.data ?? []).filter((a) => a.is_active).map((a) => (
-                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
-              ))}
-            </Select>
-          </Field>
+          {requiresPrimaryArea(inviteForm.role) ? (
+            <Field
+              label="Area" required className="sm:col-span-2"
+              hint="Area organizacional principal do colaborador - obrigatoria."
+            >
+              <Select aria-label="Area" value={inviteForm.area_id} onChange={(e) => setInviteForm((f) => ({ ...f, area_id: e.target.value }))}>
+                <option value="">Selecione...</option>
+                {(areas.data ?? []).filter((a) => a.is_active).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Field
+              label="Abrangencia de areas" className="sm:col-span-2"
+              hint="PMO / Gerencia possui acesso corporativo e nao precisa de uma Area principal."
+            >
+              <Input aria-label="Abrangencia de areas" readOnly value="Todas as areas" className="text-muted" />
+            </Field>
+          )}
         </div>
       </Modal>
 
@@ -652,19 +686,28 @@ function UsersTab() {
               ))}
             </Select>
           </Field>
-          <Field
-            label="Area" className="sm:col-span-2"
-            hint={editTarget?.active
-              ? 'Area organizacional principal do colaborador.'
-              : 'Colaborador inativo - a area pode ficar em branco.'}
-          >
-            <Select aria-label="Area" value={editForm.area_id} onChange={(e) => setEditForm((f) => ({ ...f, area_id: e.target.value }))}>
-              <option value="">Sem area (pendencia)</option>
-              {(areas.data ?? []).filter((a) => a.is_active || a.id === editForm.area_id).map((a) => (
-                <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
-              ))}
-            </Select>
-          </Field>
+          {editTarget && requiresPrimaryArea(editTarget.role) ? (
+            <Field
+              label="Area" className="sm:col-span-2"
+              hint={editTarget.active
+                ? 'Area organizacional principal do colaborador.'
+                : 'Colaborador inativo - a area pode ficar em branco.'}
+            >
+              <Select aria-label="Area" value={editForm.area_id} onChange={(e) => setEditForm((f) => ({ ...f, area_id: e.target.value }))}>
+                <option value="">Sem area (pendencia)</option>
+                {(areas.data ?? []).filter((a) => a.is_active || a.id === editForm.area_id).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name} · {a.business_unit?.name ?? '—'}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Field
+              label="Abrangencia de areas" className="sm:col-span-2"
+              hint="PMO / Gerencia possui acesso corporativo e nao precisa de uma Area principal."
+            >
+              <Input aria-label="Abrangencia de areas" readOnly value="Todas as areas" className="text-muted" />
+            </Field>
+          )}
         </div>
       </Modal>
 

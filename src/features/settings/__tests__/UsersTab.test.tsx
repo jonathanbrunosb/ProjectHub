@@ -287,6 +287,35 @@ describe('vinculo obrigatorio de Area (item 6/8)', () => {
     await waitFor(() => expect(assignPrimaryArea).toHaveBeenCalledWith('new-user', 'area-1'));
   });
 
+  it('cadastra PMO / Gerencia sem exigir nem criar vinculo com uma Area', async () => {
+    render();
+    await userEvent.click(await screen.findByRole('button', { name: /adicionar usu.rio/i }));
+    await userEvent.type(await screen.findByLabelText(/nome completo/i), 'Nova Gerente');
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'gerente@empresa.com.br');
+    await userEvent.selectOptions(screen.getByLabelText(/papel de acesso/i), 'pmo');
+
+    expect(screen.queryByLabelText(/^area$/i)).toBeNull();
+    expect(screen.getByDisplayValue(/todas as areas/i)).toBeInTheDocument();
+    expect(screen.getByText(/nao precisa de uma Area principal/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^cadastrar$/i }));
+
+    await waitFor(() => expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ role: 'pmo' })));
+    expect(assignPrimaryArea).not.toHaveBeenCalled();
+  });
+
+  it('nao considera PMO / Gerencia sem Area como pendencia administrativa', async () => {
+    listProfiles.mockImplementationOnce(async () => [
+      profiles[0],
+      { ...profiles[1], role: 'pmo', full_name: 'Gerente Sem Area' },
+    ]);
+    render();
+
+    const linhaGerente = await screen.findByText('Gerente Sem Area').then((el) => el.closest('tr')!);
+    expect(within(linhaGerente).getByText(/todas as areas/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sem Area principal vinculada/i)).toBeNull();
+  });
+
   it('editar usuario so abre novo vinculo de Area quando ela realmente muda', async () => {
     render();
     const botoes = await screen.findAllByRole('button', { name: /^editar$/i });
