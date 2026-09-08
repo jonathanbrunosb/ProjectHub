@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const invoke = vi.fn();
 vi.mock('@/lib/supabase/client', () => ({
@@ -45,7 +46,7 @@ describe('createUser (compartilha o mesmo helper de invocacao)', () => {
 
   it('mantem a Edge Function alinhada ao schema atual de profiles', () => {
     const functionSource = readFileSync(
-      new URL('../../../supabase/functions/admin-create-user/index.ts', import.meta.url),
+      resolve(process.cwd(), 'supabase/functions/admin-create-user/index.ts'),
       'utf8',
     );
 
