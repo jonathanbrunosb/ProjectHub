@@ -40,7 +40,10 @@ export interface AreaWithRelations extends Area {
 export async function listAreas(): Promise<AreaWithRelations[]> {
   const { data, error } = await supabase
     .from('areas')
-    .select(`${AREA_COLUMNS},business_unit:business_units(id,name,code),manager:profiles(id,full_name)`)
+    // Precisa do hint !areas_manager_user_id_fkey: alem de areas.manager_user_id -> profiles.id,
+    // existe tambem profiles.area_id -> areas.id (vinculo do colaborador) - com as duas FKs entre
+    // as mesmas tabelas, o PostgREST nao sabe qual usar em "manager:profiles(...)" sem o hint.
+    .select(`${AREA_COLUMNS},business_unit:business_units(id,name,code),manager:profiles!areas_manager_user_id_fkey(id,full_name)`)
     .order('name');
   if (error) throw error;
   return (data ?? []) as unknown as AreaWithRelations[];
