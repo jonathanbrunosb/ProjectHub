@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { Drawer } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
@@ -9,7 +9,10 @@ import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
-import { createTask, deleteTask, nextTaskCode, updateTask, type TaskWithContext } from '@/services/tasks';
+import {
+  createTask, deleteTask, listTaskCorresponsibles, nextTaskCode, replaceTaskCorresponsibles, updateTask,
+  type TaskWithContext,
+} from '@/services/tasks';
 import { listProjectMembers } from '@/services/projects';
 import { getProjectGoalSettings, listTaskGoalConfigs, upsertTaskGoalConfig } from '@/services/goalIndicators';
 import { priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
@@ -27,7 +30,24 @@ const blank = {
   code: '', title: '', description: '', assignee_id: '', priority: 'media' as Priority,
   status: 'nao_iniciada' as TaskStatus, start_date: '', due_date: '', completed_at: '',
   weight: '1', progress: '0', is_milestone: false, is_critical: false, estimated_hours: '',
+  assignee_allocation_percent: '',
 };
+
+interface ResponsibleRow { profile_id: string; percent: string }
+
+/**
+ * 'empty'    = nenhum percentual informado - rateio igualitario (valido).
+ * 'partial'  = alguns preenchidos, outros nao - invalido, precisa completar.
+ * 'complete' = todos preenchidos - valido so' se a soma fechar em 100% (tolerancia 0.5pp).
+ */
+function percentSum(rows: ResponsibleRow[]): { state: 'empty' | 'partial' | 'complete'; sum: number; valid: boolean } {
+  if (rows.length === 0) return { state: 'empty', sum: 0, valid: true };
+  const filledCount = rows.filter((r) => r.percent.trim() !== '').length;
+  if (filledCount === 0) return { state: 'empty', sum: 0, valid: true };
+  if (filledCount !== rows.length) return { state: 'partial', sum: 0, valid: false };
+  const sum = rows.reduce((acc, r) => acc + Number(r.percent), 0);
+  return { state: 'complete', sum, valid: sum >= 99.5 && sum <= 100.5 };
+}
 
 const blankGoal = { included: false, goalWeight: '0' };
 
@@ -60,6 +80,18 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
   const canManageGoal = can('goal_indicator.manage');
   const showGoalField = Boolean(task) && canManageGoal && goalSettings.data?.enabled;
 
+  // Rateio de horas planejadas entre responsaveis - so' faz sentido para uma
+  // tarefa ja salva (task_corresponsibles referencia task_id).
+  const corresponsibles = useQuery({
+    queryKey: ['task-corresponsibles', task?.id], queryFn: () => listTaskCorresponsibles(task!.id), enabled: open && Boolean(task),
+  });
+  const [responsibleRows, setResponsibleRows] = useState<ResponsibleRow[]>([]);
+  const candidateResponsibles = useMemo(() => {
+    const used = new Set([form.assignee_id, ...responsibleRows.map((r) => r.profile_id)]);
+    return assignees.filter((person) => !used.has(person.id));
+  }, [assignees, form.assignee_id, responsibleRows]);
+  const rateio = percentSum(responsibleRows.length > 0 ? [{ profile_id: 'assignee', percent: form.assignee_allocation_percent }, ...responsibleRows] : []);
+
   useEffect(() => {
     if (!open) return;
     if (task) {
@@ -78,10 +110,12 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
         is_milestone: task.is_milestone,
         is_critical: task.is_critical,
         estimated_hours: task.estimated_hours != null ? String(task.estimated_hours) : '',
+        assignee_allocation_percent: task.assignee_allocation_percent != null ? String(task.assignee_allocation_percent) : '',
       });
     } else {
       setForm(blank);
       setGoalForm(blankGoal);
+      setResponsibleRows([]);
       void nextTaskCode(projectId).then((code) => setForm((f) => ({ ...f, code })));
     }
   }, [open, task, projectId]);
@@ -91,6 +125,13 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
     const cfg = goalConfigs.data?.[0];
     setGoalForm({ included: cfg?.included ?? false, goalWeight: String(cfg?.weight ?? 0) });
   }, [open, task, goalConfigs.data]);
+
+  useEffect(() => {
+    if (!open || !task) return;
+    setResponsibleRows((corresponsibles.data ?? []).map((c) => ({
+      profile_id: c.profile_id, percent: c.allocation_percent != null ? String(c.allocation_percent) : '',
+    })));
+  }, [open, task, corresponsibles.data]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -120,13 +161,27 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
         is_milestone: form.is_milestone,
         is_critical: form.is_critical,
         estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
+        // So' grava o percentual do assignee quando ha co-responsaveis com
+        // rateio valido - com um unico responsavel a participacao e' sempre
+        // 100% e o campo fica sem sentido.
+        assignee_allocation_percent: rateio.state === 'complete' ? Number(form.assignee_allocation_percent) : null,
       };
       if (!payload.title) throw new Error('Informe o titulo da tarefa.');
       if (payload.start_date && payload.due_date && payload.due_date < payload.start_date) {
         throw new Error('A data de termino deve ser posterior a data de inicio.');
       }
+      if (!rateio.valid) {
+        throw new Error('O rateio deve ser preenchido para todos os responsaveis e somar 100%, ou deixado em branco para dividir igualmente.');
+      }
       if (task) await updateTask(task.id, payload);
       else await createTask(payload);
+
+      if (task) {
+        await replaceTaskCorresponsibles(task.id, responsibleRows.map((row) => ({
+          profile_id: row.profile_id,
+          allocation_percent: rateio.state === 'complete' ? Number(row.percent) : null,
+        })));
+      }
 
       if (task && showGoalField) {
         await upsertTaskGoalConfig({
@@ -138,6 +193,8 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ['goal-scores'] });
       queryClient.invalidateQueries({ queryKey: ['goal-indicator'] });
+      queryClient.invalidateQueries({ queryKey: ['task-corresponsibles'] });
+      queryClient.invalidateQueries({ queryKey: ['task-planned-allocation'] });
       // Faltava isto: sem invalidar, reabrir o mesmo drawer mostrava o valor
       // antigo em cache do checkbox/peso, dando a impressao de que nao salvou.
       queryClient.invalidateQueries({ queryKey: ['goal-config'] });
@@ -231,9 +288,65 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
             <Input type="number" min="0" max="100" value={form.progress} onChange={(e) => set('progress', e.target.value)} />
           </Field>
 
-          <Field label="Horas estimadas">
+          <Field
+            label="Horas estimadas"
+            hint={task && task.baseline_estimated_hours != null && Number(form.estimated_hours) !== task.baseline_estimated_hours
+              ? `Baseline original: ${task.baseline_estimated_hours}h` : undefined}
+          >
             <Input type="number" min="0" step="1" value={form.estimated_hours} onChange={(e) => set('estimated_hours', e.target.value)} />
           </Field>
+
+          {task && (
+            <div className="sm:col-span-2 rounded-lg border border-border p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-medium">Responsaveis e rateio da alocacao planejada</p>
+                {candidateResponsibles.length > 0 && (
+                  <Button
+                    type="button" size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />}
+                    onClick={() => setResponsibleRows((rows) => [...rows, { profile_id: candidateResponsibles[0].id, percent: '' }])}
+                  >
+                    Adicionar responsavel
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-sm">
+                <span>{assignees.find((a) => a.id === form.assignee_id)?.name ?? 'Sem responsavel principal'}</span>
+                {responsibleRows.length > 0 ? (
+                  <Input
+                    aria-label="Participacao do responsavel principal (%)" type="number" min="0" max="100" step="0.1" className="w-20"
+                    value={form.assignee_allocation_percent} onChange={(e) => set('assignee_allocation_percent', e.target.value)}
+                  />
+                ) : <span className="text-xs text-muted">100%</span>}
+                <span />
+                {responsibleRows.map((row, index) => (
+                  <div key={`${row.profile_id}-${index}`} className="contents">
+                    <Select
+                      aria-label="Co-responsavel"
+                      value={row.profile_id}
+                      onChange={(e) => setResponsibleRows((rows) => rows.map((r, i) => (i === index ? { ...r, profile_id: e.target.value } : r)))}
+                    >
+                      <option value={row.profile_id}>{assignees.find((a) => a.id === row.profile_id)?.name ?? 'Colaborador'}</option>
+                      {candidateResponsibles.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+                    </Select>
+                    <Input
+                      aria-label="Participacao (%)" type="number" min="0" max="100" step="0.1" className="w-20"
+                      value={row.percent} onChange={(e) => setResponsibleRows((rows) => rows.map((r, i) => (i === index ? { ...r, percent: e.target.value } : r)))}
+                    />
+                    <Button
+                      type="button" size="icon" variant="ghost" aria-label="Remover responsavel"
+                      onClick={() => setResponsibleRows((rows) => rows.filter((_, i) => i !== index))}
+                    ><X className="h-3.5 w-3.5" /></Button>
+                  </div>
+                ))}
+              </div>
+              <p className={`mt-2 text-xs ${rateio.valid ? 'text-muted' : 'text-danger'}`}>
+                {responsibleRows.length === 0 && 'Sem co-responsaveis: 100% das horas planejadas vao para o responsavel principal.'}
+                {rateio.state === 'empty' && responsibleRows.length > 0 && 'Deixe os percentuais em branco para ratear as horas planejadas igualmente entre os responsaveis.'}
+                {rateio.state === 'partial' && 'Preencha o percentual de todos os responsaveis (ou deixe todos em branco).'}
+                {rateio.state === 'complete' && `Total: ${rateio.sum.toFixed(1)}%${rateio.valid ? '' : ' - deve somar 100%'}`}
+              </p>
+            </div>
+          )}
 
           <div className="flex items-end gap-4">
             <label className="flex items-center gap-2 text-sm">

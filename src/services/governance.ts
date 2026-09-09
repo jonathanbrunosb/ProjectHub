@@ -157,7 +157,7 @@ export async function upsertAllocation(input: Partial<AllocationRow> & { project
 export async function listTaskPlannedAllocation(projectId: string): Promise<TaskPlannedAllocationRow[]> {
   const { data, error } = await supabase
     .from('v_task_planned_allocation')
-    .select('task_id,project_id,code,title,status,profile_id,responsible_count,planned_hours,period_start,period_end,business_days')
+    .select('task_id,project_id,code,title,status,profile_id,responsible_count,uses_custom_percent,allocation_percent,planned_hours,baseline_planned_hours,period_start,period_end,business_days')
     .eq('project_id', projectId)
     .order('period_start');
   if (error) throw error;

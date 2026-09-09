@@ -1,10 +1,10 @@
 import { supabase } from '@/lib/supabase/client';
-import type { Milestone, Task } from '@/types/domain';
+import type { Milestone, Task, TaskCorresponsible } from '@/types/domain';
 
 const TASK_COLUMNS =
   'id,project_id,phase_id,parent_task_id,code,title,description,assignee_id,priority,status,' +
   'start_date,due_date,baseline_due_date,completed_at,weight,progress,is_milestone,is_critical,' +
-  'estimated_hours,tags,position';
+  'estimated_hours,baseline_estimated_hours,assignee_allocation_percent,tags,position';
 
 export interface TaskWithContext extends Task {
   assignee: { full_name: string; area_id: string | null; area: { name: string } | null } | null;
@@ -107,6 +107,33 @@ export async function upsertMilestone(input: Partial<Milestone> & { project_id: 
     ? await supabase.from('milestones').update(input).eq('id', input.id)
     : await supabase.from('milestones').insert(input);
   if (error) throw error;
+}
+
+export async function listTaskCorresponsibles(taskId: string): Promise<TaskCorresponsible[]> {
+  const { data, error } = await supabase
+    .from('task_corresponsibles')
+    .select('id,task_id,profile_id,allocation_percent,profile:profiles(full_name)')
+    .eq('task_id', taskId);
+  if (error) throw error;
+  return (data ?? []) as unknown as TaskCorresponsible[];
+}
+
+/**
+ * Substitui todos os co-responsaveis da tarefa pela lista informada (delete-and-insert).
+ * Nao ha' historico de co-responsaveis a preservar por linha - a tarefa nao tinha
+ * nenhuma UI de gerenciamento ate' aqui, entao "substituir tudo" e' mais simples
+ * e mais seguro que reconciliar diffs de uma lista que pode nao ter ids ainda.
+ */
+export async function replaceTaskCorresponsibles(
+  taskId: string, entries: { profile_id: string; allocation_percent: number | null }[],
+): Promise<void> {
+  const { error: deleteError } = await supabase.from('task_corresponsibles').delete().eq('task_id', taskId);
+  if (deleteError) throw deleteError;
+  if (entries.length === 0) return;
+  const { error: insertError } = await supabase
+    .from('task_corresponsibles')
+    .insert(entries.map((entry) => ({ task_id: taskId, ...entry })));
+  if (insertError) throw insertError;
 }
 
 export interface TaskDependency {

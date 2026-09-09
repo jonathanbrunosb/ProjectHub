@@ -219,14 +219,25 @@ export interface Task {
   is_milestone: boolean;
   is_critical: boolean;
   estimated_hours: number | null;
+  /** Espelha baseline_due_date: capturado uma unica vez na criacao, nunca sobrescrito depois. */
+  baseline_estimated_hours: number | null;
+  /** % de participacao do assignee_id no rateio da tarefa - so' usado quando ha co-responsaveis (task_corresponsibles). */
+  assignee_allocation_percent: number | null;
   tags: string[];
   position: number;
+}
+
+/** Linha de task_corresponsibles - co-responsavel de uma tarefa, com % de participacao opcional. */
+export interface TaskCorresponsible {
+  id: string; task_id: string; profile_id: string; allocation_percent: number | null;
+  profile: { full_name: string } | null;
 }
 
 /** Linha de public.v_task_planned_allocation - alocacao planejada calculada a partir das tarefas. */
 export interface TaskPlannedAllocationRow {
   task_id: string; project_id: string; code: string; title: string; status: TaskStatus;
-  profile_id: string; responsible_count: number; planned_hours: number;
+  profile_id: string; responsible_count: number; uses_custom_percent: boolean;
+  allocation_percent: number; planned_hours: number; baseline_planned_hours: number | null;
   period_start: string; period_end: string; business_days: number;
 }
 
