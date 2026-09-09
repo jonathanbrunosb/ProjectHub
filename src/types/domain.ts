@@ -315,11 +315,16 @@ export interface ResourceAllocation {
 
 export interface ResourceCapacity {
   profile_id: string; full_name: string;
-  reference_month: string; capacity_hours: number; allocated_hours: number;
-  allocation_pct: number; project_count: number;
+  reference_month: string; capacity_hours: number;
+  /** Horas realizadas/legadas (resource_allocations) - apontamento manual, nao o planejamento. */
+  allocated_hours: number; allocation_pct: number; project_count: number;
   /** Area vigente NAQUELE mes de referencia (via user_area_assignments) - nao o vinculo atual. */
   area_id: string | null; area_name: string | null;
   business_unit_id: string | null; business_unit_name: string | null;
+  /** Horas planejadas calculadas a partir das tarefas (v_task_planned_allocation). */
+  planned_hours: number; planned_project_count: number;
+  /** allocated_hours + planned_hours - visao combinada de capacidade. */
+  total_hours: number; total_allocation_pct: number;
 }
 
 export interface CriticalCalendarEvent {

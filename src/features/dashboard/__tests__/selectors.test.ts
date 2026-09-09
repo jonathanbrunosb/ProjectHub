@@ -166,6 +166,7 @@ function capacityRow(overrides: Partial<ResourceCapacity> = {}): ResourceCapacit
     reference_month: '2026-06-01', capacity_hours: 100, allocated_hours: 0,
     allocation_pct: 0, project_count: 0,
     area_id: null, area_name: null, business_unit_id: null, business_unit_name: null,
+    planned_hours: 0, planned_project_count: 0, total_hours: 0, total_allocation_pct: 0,
     ...overrides,
   };
 }

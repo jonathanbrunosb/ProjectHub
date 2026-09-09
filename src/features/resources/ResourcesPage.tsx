@@ -21,9 +21,15 @@ import { areaCapacity, currentMonthKey, type AreaCapacity } from '@/features/das
  * Capacidade x alocacao. Alertas seguem a regra: acima de 100% = sobrecarga;
  * entre o limite da area e 100% = atencao.
  */
+type HeatmapMetric = 'total' | 'planned' | 'allocated';
+const heatmapMetricLabel: Record<HeatmapMetric, string> = {
+  total: 'Total (planejado + realizado)', planned: 'Planejado', allocated: 'Realizado',
+};
+
 export function ResourcesPage() {
   useBreadcrumbs([{ label: 'Recursos & Capacidade' }]);
   const [tab, setTab] = useState('heatmap');
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('total');
   const [areaFilter, setAreaFilter] = useState('');
   const [areaMonth, setAreaMonth] = useState<string | null>(null);
   const [businessUnitFilter, setBusinessUnitFilter] = useState('');
@@ -70,7 +76,7 @@ export function ResourcesPage() {
     [areasQuery.data],
   );
   const byArea = useMemo(() => {
-    let result = areaCapacity(capacityQuery.data ?? [], selectedAreaMonth);
+    let result = areaCapacity(capacityQuery.data ?? [], selectedAreaMonth, 'total');
     if (businessUnitFilter) result = result.filter((a) => a.businessUnit === businessUnitFilter);
     if (statusFilter) result = result.filter((a) => a.status === statusFilter);
     return result;
@@ -98,17 +104,18 @@ export function ResourcesPage() {
       .sort((a, b) => b.allocation_pct - a.allocation_pct);
   }, [areaDrillDown, capacityQuery.data, selectedAreaMonth, allocationsQuery.data]);
 
-  const byAreaCurrent = useMemo(() => areaCapacity(capacityQuery.data ?? [], currentMonth), [capacityQuery.data, currentMonth]);
+  const byAreaCurrent = useMemo(() => areaCapacity(capacityQuery.data ?? [], currentMonth, 'total'), [capacityQuery.data, currentMonth]);
 
   const alerts = useMemo(() => {
     const list: { severity: 'danger' | 'warn'; text: string }[] = [];
     const areasByName = new Map((areasQuery.data ?? []).map((a) => [a.name, a]));
 
     for (const r of rows.filter((x) => x.reference_month === currentMonth)) {
-      if (r.allocation_pct > 100) {
-        list.push({ severity: 'danger', text: `${r.full_name} esta alocado em ${formatPercent(r.allocation_pct)} da capacidade no mes corrente.` });
-      } else if (r.project_count >= 3 && r.allocation_pct > 70) {
-        list.push({ severity: 'warn', text: `${r.full_name} concentra ${r.project_count} projetos simultaneos com ${formatPercent(r.allocation_pct)} de alocacao.` });
+      const projectCount = Math.max(r.project_count, r.planned_project_count);
+      if (r.total_allocation_pct > 100) {
+        list.push({ severity: 'danger', text: `${r.full_name} esta em ${formatPercent(r.total_allocation_pct)} da capacidade no mes corrente (planejado + realizado).` });
+      } else if (projectCount >= 3 && r.total_allocation_pct > 70) {
+        list.push({ severity: 'warn', text: `${r.full_name} concentra ${projectCount} projetos simultaneos com ${formatPercent(r.total_allocation_pct)} de alocacao.` });
       }
     }
 
@@ -129,11 +136,13 @@ export function ResourcesPage() {
     const current = rows.filter((r) => r.reference_month === currentMonth);
     const capacity = current.reduce((a, r) => a + Number(r.capacity_hours), 0);
     const allocated = current.reduce((a, r) => a + Number(r.allocated_hours), 0);
+    const planned = current.reduce((a, r) => a + Number(r.planned_hours), 0);
+    const total = allocated + planned;
     return {
-      capacity, allocated,
-      available: Math.max(0, capacity - allocated),
-      pct: capacity ? (allocated / capacity) * 100 : 0,
-      overloaded: current.filter((r) => r.allocation_pct > 100).length,
+      capacity, allocated, planned, total,
+      available: Math.max(0, capacity - total),
+      pct: capacity ? (total / capacity) * 100 : 0,
+      overloaded: current.filter((r) => r.total_allocation_pct > 100).length,
     };
   }, [rows, currentMonth]);
 
@@ -145,7 +154,7 @@ export function ResourcesPage() {
     <>
       <PageHeader
         title="Recursos & Capacidade"
-        description="Capacidade das areas, alocacao por projeto e identificacao de sobrecarga."
+        description="Capacidade das areas, alocacao planejada (calculada a partir das tarefas) e realizada, e identificacao de sobrecarga."
         actions={
           <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por area">
             <option value="">Todas as areas</option>
@@ -154,12 +163,13 @@ export function ResourcesPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard label="Capacidade do mes" value={`${formatNumber(totals.capacity, 0)} h`} />
-        <KpiCard label="Horas alocadas" value={`${formatNumber(totals.allocated, 0)} h`} />
+        <KpiCard label="Horas planejadas" value={`${formatNumber(totals.planned, 0)} h`} />
+        <KpiCard label="Horas realizadas" value={`${formatNumber(totals.allocated, 0)} h`} />
         <KpiCard label="Capacidade disponivel" value={`${formatNumber(totals.available, 0)} h`}
           tone={totals.available === 0 ? 'danger' : 'ok'} />
-        <KpiCard label="Alocacao media" value={formatPercent(totals.pct)}
+        <KpiCard label="Alocacao media (total)" value={formatPercent(totals.pct)}
           tone={totals.pct > 100 ? 'danger' : totals.pct > 85 ? 'warn' : 'ok'} />
         <KpiCard label="Pessoas sobrecarregadas" value={totals.overloaded}
           tone={totals.overloaded > 0 ? 'danger' : 'ok'} />
@@ -190,7 +200,7 @@ export function ResourcesPage() {
         items={[
           { key: 'heatmap', label: 'Heatmap de alocacao' },
           { key: 'areas', label: 'Por area' },
-          { key: 'alocacoes', label: 'Alocacoes', count: (allocationsQuery.data ?? []).length },
+          { key: 'alocacoes', label: 'Horas realizadas', count: (allocationsQuery.data ?? []).length },
         ]}
       />
 
@@ -198,6 +208,14 @@ export function ResourcesPage() {
         <Spinner label="Calculando capacidade" />
       ) : tab === 'heatmap' ? (
         <div className="card overflow-x-auto p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted" title="As horas planejadas sao calculadas com base no esforco estimado, periodo e responsaveis definidos nas tarefas. As horas realizadas vem do apontamento manual.">
+              Planejamento de capacidade gerado automaticamente a partir das tarefas do projeto.
+            </p>
+            <Select className="w-auto" value={heatmapMetric} onChange={(e) => setHeatmapMetric(e.target.value as HeatmapMetric)} aria-label="Metrica do heatmap">
+              {Object.entries(heatmapMetricLabel).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </Select>
+          </div>
           {people.length === 0 ? (
             <EmptyState title="Sem colaboradores no filtro atual" />
           ) : (
@@ -219,11 +237,15 @@ export function ResourcesPage() {
                     </td>
                     {months.map((m) => {
                       const cell = p.byMonth.get(m);
-                      const pct = Number(cell?.allocation_pct ?? 0);
+                      const pct = Number(
+                        heatmapMetric === 'total' ? cell?.total_allocation_pct
+                          : heatmapMetric === 'planned' ? (Number(cell?.capacity_hours) ? Number(cell?.planned_hours) * 100 / Number(cell?.capacity_hours) : 0)
+                            : cell?.allocation_pct ?? 0,
+                      );
                       return (
                         <td key={m} className="px-1 py-2 text-center">
                           <span
-                            title={`${formatNumber(cell?.allocated_hours ?? 0, 0)}h de ${formatNumber(cell?.capacity_hours ?? 0, 0)}h · ${cell?.project_count ?? 0} projeto(s)`}
+                            title={`Planejado: ${formatNumber(cell?.planned_hours ?? 0, 0)}h · Realizado: ${formatNumber(cell?.allocated_hours ?? 0, 0)}h de ${formatNumber(cell?.capacity_hours ?? 0, 0)}h de capacidade`}
                             className={cn(
                               'inline-block w-full rounded px-1.5 py-1.5 text-xs font-medium tabular-nums',
                               pct === 0 ? 'bg-surface-2 text-muted'
@@ -272,7 +294,7 @@ export function ResourcesPage() {
               <table className="w-full min-w-[880px] text-sm">
                 <thead className="bg-surface-2">
                   <tr>
-                    {['Area', 'Gerencia', 'Gestor', 'Colaboradores', 'Capacidade', 'Alocado', 'Disponivel', 'Utilizacao', 'Status', ''].map((h) => (
+                    {['Area', 'Gerencia', 'Gestor', 'Colaboradores', 'Capacidade', 'Planejado + Realizado', 'Disponivel', 'Utilizacao', 'Status', ''].map((h) => (
                       <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
                     ))}
                   </tr>
@@ -323,10 +345,11 @@ export function ResourcesPage() {
                   <div key={p.profile_id} className="rounded-lg border border-border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium">{p.full_name}</p>
-                      <Badge tone={p.allocation_pct > 100 ? 'danger' : p.allocation_pct > 85 ? 'warn' : 'ok'}>
-                        {formatPercent(p.allocation_pct)} · {formatNumber(p.allocated_hours, 0)}h de {formatNumber(p.capacity_hours, 0)}h
+                      <Badge tone={p.total_allocation_pct > 100 ? 'danger' : p.total_allocation_pct > 85 ? 'warn' : 'ok'}>
+                        {formatPercent(p.total_allocation_pct)} · {formatNumber(p.total_hours, 0)}h de {formatNumber(p.capacity_hours, 0)}h
                       </Badge>
                     </div>
+                    <p className="mt-1 text-xs text-muted">Planejado: {formatNumber(p.planned_hours, 0)}h · Realizado: {formatNumber(p.allocated_hours, 0)}h</p>
                     {p.allocations.length > 0 && (
                       <ul className="mt-2 divide-y divide-border text-xs text-muted">
                         {p.allocations.map((al) => (
