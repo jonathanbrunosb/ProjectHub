@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      email, full_name: fullName, role,
+      email, full_name: fullName, employee_number: employeeNumber, role,
       job_title: jobTitle, company_id: companyId,
       business_unit_id: businessUnitId,
     } = (body ?? {}) as Record<string, string | null | undefined>;
@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
       .from('profiles')
       .update({
         role,
+        employee_number: employeeNumber || null,
         job_title: jobTitle || null,
         company_id: companyId || null,
         business_unit_id: businessUnitId || null,

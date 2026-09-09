@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     supabase
       .from('profiles')
-      .select('id,email,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
+      .select('id,email,employee_number,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
       .eq('id', session.user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session?.user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('id,email,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
+        .select('id,email,employee_number,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment')
         .eq('id', session.user.id)
         .maybeSingle();
       setProfile((data as Profile) ?? null);

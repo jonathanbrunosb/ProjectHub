@@ -134,6 +134,11 @@ select pg_temp.assert_denied(
   $q$ insert into public.project_members (project_id, profile_id, project_role)
       values ('31313131-3131-4131-8131-000000000001','11111111-1111-4111-8111-000000000008','project_owner') $q$,
   'colaborador nao adiciona membros');
+select pg_temp.assert_denied(
+  $q$ insert into public.resource_allocations
+      (project_id, profile_id, period_start, period_end, allocated_hours)
+      values ('31313131-3131-4131-8131-000000000001', auth.uid(), current_date, current_date + 5, 8) $q$,
+  'colaborador nao registra alocacao sem permissao de gestao');
 
 -- -----------------------------------------------------------------------------
 -- CONSULTA (viewer): somente leitura no escopo autorizado

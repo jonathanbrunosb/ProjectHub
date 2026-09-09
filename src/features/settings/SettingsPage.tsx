@@ -179,11 +179,11 @@ function ProfileTab() {
 
 // ---------------------------------------------------------------------------
 const blankNewUser = {
-  full_name: '', email: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', area_id: '',
+  full_name: '', email: '', employee_number: '', role: 'viewer' as RoleKey, job_title: '', company_id: '', area_id: '',
 };
 
 const blankEditForm = {
-  full_name: '', job_title: '', company_id: '', weekly_capacity_hours: 40, area_id: '',
+  full_name: '', employee_number: '', job_title: '', company_id: '', weekly_capacity_hours: 40, area_id: '',
 };
 
 /** Pendencia administrativa (item 8): filtro especial, nao um id de area de verdade. */
@@ -263,6 +263,7 @@ function UsersTab() {
       const result = await createUser({
         email: inviteForm.email.trim(),
         full_name: inviteForm.full_name.trim(),
+        employee_number: inviteForm.employee_number.trim() || null,
         role: inviteForm.role,
         job_title: inviteForm.job_title || null,
         company_id: inviteForm.company_id || null,
@@ -298,6 +299,7 @@ function UsersTab() {
       if (!editTarget) return;
       const { error } = await supabase.from('profiles').update({
         full_name: editForm.full_name.trim(),
+        employee_number: editForm.employee_number.trim() || null,
         job_title: editForm.job_title || null,
         company_id: editForm.company_id || null,
         weekly_capacity_hours: editForm.weekly_capacity_hours,
@@ -343,6 +345,7 @@ function UsersTab() {
   function openEdit(p: Profile) {
     setEditForm({
       full_name: p.full_name,
+      employee_number: p.employee_number ?? '',
       job_title: p.job_title ?? '',
       company_id: p.company_id ?? '',
       weekly_capacity_hours: p.weekly_capacity_hours,
@@ -392,7 +395,7 @@ function UsersTab() {
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-surface-2">
             <tr>
-              {['Usuario', 'Cargo', 'Area', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
+              {['Usuario', 'Matricula', 'Cargo', 'Area', 'Papel de acesso', 'Alterna QA/PRD', 'Capacidade', 'Situacao', ''].map((h) => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted">{h}</th>
               ))}
             </tr>
@@ -401,6 +404,7 @@ function UsersTab() {
             {rows.map((p) => (
               <tr key={p.id} className="border-t border-border">
                 <td className="px-3 py-2.5"><AvatarWithName name={p.full_name} subtitle={p.email} /></td>
+                <td className="px-3 py-2.5 text-muted">{p.employee_number ?? '—'}</td>
                 <td className="px-3 py-2.5 text-muted">{p.job_title ?? '—'}</td>
                 <td className="px-3 py-2.5">
                   {!requiresPrimaryArea(p.role) ? (
@@ -515,6 +519,9 @@ function UsersTab() {
           </Field>
           <Field label="E-mail" required className="sm:col-span-2">
             <Input aria-label="E-mail" type="email" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="nome@empresa.com.br" />
+          </Field>
+          <Field label="Matricula">
+            <Input value={inviteForm.employee_number} onChange={(e) => setInviteForm((f) => ({ ...f, employee_number: e.target.value }))} />
           </Field>
           <Field label="Papel de acesso" required>
             <Select
@@ -665,6 +672,9 @@ function UsersTab() {
           </Field>
           <Field label="E-mail" className="sm:col-span-2">
             <Input readOnly value={editTarget?.email ?? ''} className="text-muted" />
+          </Field>
+          <Field label="Matricula">
+            <Input value={editForm.employee_number} onChange={(e) => setEditForm((f) => ({ ...f, employee_number: e.target.value }))} />
           </Field>
           <Field label="Cargo">
             <Input value={editForm.job_title} onChange={(e) => setEditForm((f) => ({ ...f, job_title: e.target.value }))} />

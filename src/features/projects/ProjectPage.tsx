@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Users } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { Tabs } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
-import { AvatarWithName } from '@/components/ui/Avatar';
 import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
@@ -22,11 +21,11 @@ import {
 import type { FinancialModuleMode } from '@/types/domain';
 import { listMilestones, listTasks } from '@/services/tasks';
 import { listActionPlans, listRisks } from '@/services/risks';
-import { listAllocations, listAuditLog, listCalendarConflicts, listDecisions } from '@/services/governance';
+import { listAuditLog, listCalendarConflicts, listDecisions } from '@/services/governance';
 import { formatDate, formatDateTime, relativeFromNow } from '@/utils/format';
 import {
   auditActionLabel, auditActionTone, entityLabel, financialModeLabel, projectStatusLabel,
-  priorityLabel, roleLabel,
+  priorityLabel,
 } from '@/utils/domain-labels';
 import { ProjectHeader } from './ProjectHeader';
 import { TaskList } from '@/features/tasks/TaskList';
@@ -37,6 +36,7 @@ import { DecisionsTab, IndicatorsTab, StatusReportsTab } from './tabs/Governance
 import { CustomFieldsPanel } from '@/features/customfields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
 import { GanttChart } from '@/components/gantt/GanttChart';
+import { ProjectResourcesTab } from './ProjectResourcesTab';
 
 const TABS = [
   { key: 'visao-geral', label: 'Visao Geral' },
@@ -140,7 +140,7 @@ export function ProjectPage() {
       )}
       {tab === 'meta-prazo' && <GoalIndicatorTab projectId={projectId} />}
       {tab === 'financeiro' && financialActive && <FinancialTab projectId={projectId} canManage={canManage} canEdit={canEdit} />}
-      {tab === 'recursos' && <ResourcesTab projectId={projectId} members={members.data ?? []} loading={members.isLoading} />}
+      {tab === 'recursos' && <ProjectResourcesTab projectId={projectId} members={members.data ?? []} loading={members.isLoading} canManage={canManage} />}
       {tab === 'riscos' && (
         <RiskTable risks={risks.data ?? []} loading={risks.isLoading} projectId={projectId} canEdit={canEdit} module="risks-project" />
       )}
@@ -347,90 +347,6 @@ function ScheduleTab({ projectId }: { projectId: string }) {
   return (
     <div className="card p-2">
       <GanttChart items={items} scale="semana" />
-    </div>
-  );
-}
-
-function ResourcesTab({
-  projectId, members, loading,
-}: { projectId: string; members: Awaited<ReturnType<typeof listProjectMembers>>; loading: boolean }) {
-  const allocations = useQuery({ queryKey: ['allocations', projectId], queryFn: () => listAllocations(projectId) });
-  const [areaFilter, setAreaFilter] = useState('');
-
-  const areaOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const m of members) if (m.profile?.area?.name) names.add(m.profile.area.name);
-    for (const a of allocations.data ?? []) if (a.profile?.area?.name) names.add(a.profile.area.name);
-    return [...names].sort();
-  }, [members, allocations.data]);
-
-  const filteredMembers = useMemo(
-    () => (areaFilter ? members.filter((m) => m.profile?.area?.name === areaFilter) : members),
-    [members, areaFilter],
-  );
-  const filteredAllocations = useMemo(
-    () => (areaFilter ? (allocations.data ?? []).filter((a) => a.profile?.area?.name === areaFilter) : (allocations.data ?? [])),
-    [allocations.data, areaFilter],
-  );
-
-  if (loading) return <Spinner />;
-
-  return (
-    <div className="space-y-3">
-      {areaOptions.length > 0 && (
-        <Select className="w-auto" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar recursos por area">
-          <option value="">Todas as areas</option>
-          {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-        </Select>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card p-4">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <Users className="h-4 w-4" /> Equipe do projeto
-          </h2>
-          {filteredMembers.length === 0 ? (
-            <EmptyState title="Nenhum membro vinculado" />
-          ) : (
-            <ul className="divide-y divide-border">
-              {filteredMembers.map((m) => (
-                <li key={m.id} className="flex items-center justify-between gap-2 py-2.5">
-                  <AvatarWithName
-                    name={m.profile?.full_name}
-                    subtitle={[m.profile?.job_title, m.profile?.area?.name].filter(Boolean).join(' · ') || undefined}
-                  />
-                  <div className="flex items-center gap-2">
-                    <Badge tone="neutral">{m.role_label ?? roleLabel[m.project_role as keyof typeof roleLabel]}</Badge>
-                    {!m.can_edit && <Badge tone="info">Somente leitura</Badge>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Alocacao</h2>
-          {filteredAllocations.length === 0 ? (
-            <EmptyState title="Nenhuma alocacao registrada" description="Registre horas por periodo para acompanhar capacidade e sobrecarga." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {filteredAllocations.map((a) => (
-                <li key={a.id} className="py-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm">{a.profile?.full_name ?? '—'}</span>
-                    <span className="shrink-0 tabular-nums text-sm">{Number(a.allocated_hours).toFixed(0)} h</span>
-                  </div>
-                  <p className="text-xs text-muted">
-                    {a.role_label ?? 'Sem funcao'} · {formatDate(a.period_start)} a {formatDate(a.period_end)}
-                    {a.profile?.area?.name && <> · {a.profile.area.name}</>}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
     </div>
   );
 }

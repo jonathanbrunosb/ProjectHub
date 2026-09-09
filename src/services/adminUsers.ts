@@ -4,6 +4,7 @@ import type { RoleKey } from '@/types/domain';
 export interface CreateUserInput {
   email: string;
   full_name: string;
+  employee_number?: string | null;
   role: RoleKey;
   job_title?: string | null;
   company_id?: string | null;

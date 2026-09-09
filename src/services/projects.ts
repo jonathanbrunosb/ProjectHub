@@ -145,18 +145,23 @@ export interface ProjectMemberRow {
   project_role: string;
   role_label: string | null;
   can_edit: boolean;
+  start_date: string;
+  end_date: string | null;
+  status: 'ativo' | 'inativo';
+  notes: string | null;
   profile: {
-    full_name: string; email: string; job_title: string | null;
-    area_id: string | null; area: { name: string } | null;
+    full_name: string; email: string; employee_number: string | null; job_title: string | null; active: boolean;
+    weekly_capacity_hours: number;
+    area_id: string | null; area: { name: string; business_unit: { name: string } | null } | null;
   } | null;
 }
 
 export async function listProjectMembers(projectId: string): Promise<ProjectMemberRow[]> {
   const { data, error } = await supabase
     .from('project_members')
-    .select('id,project_id,profile_id,project_role,role_label,can_edit,profile:profiles(full_name,email,job_title,area_id,area:areas!profiles_area_id_fkey(name))')
+    .select('id,project_id,profile_id,project_role,role_label,can_edit,start_date,end_date,status,notes,profile:profiles(full_name,email,employee_number,job_title,active,weekly_capacity_hours,area_id,area:areas!profiles_area_id_fkey(name,business_unit:business_units(name)))')
     .eq('project_id', projectId)
-    .order('project_role');
+    .order('status').order('start_date', { ascending: false });
   if (error) throw error;
   return (data ?? []) as unknown as ProjectMemberRow[];
 }
@@ -164,7 +169,7 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
 // --- Cadastros de apoio (usados em formularios e filtros) -------------------
 
 const PROFILE_COLUMNS =
-  'id,email,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
+  'id,email,employee_number,full_name,job_title,role,company_id,business_unit_id,area_id,avatar_url,weekly_capacity_hours,active,can_switch_environment';
 
 /**
  * Todos os perfis, ativos ou nao. Uso: gestao de usuarios (Admin precisa ver
@@ -202,6 +207,41 @@ export async function listCompanies(): Promise<Company[]> {
     .from('companies').select(COMPANY_COLUMNS).eq('active', true).order('name');
   if (error) throw error;
   return (data ?? []) as unknown as Company[];
+}
+
+export interface ProjectMemberCandidate {
+  id: string; full_name: string; email: string; employee_number: string | null;
+  job_title: string | null; active: boolean;
+  area: { name: string; business_unit: { name: string } | null } | null;
+}
+
+export async function listProjectMemberCandidates(): Promise<ProjectMemberCandidate[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,full_name,email,employee_number,job_title,active,area:areas!profiles_area_id_fkey(name,business_unit:business_units(name))')
+    .order('full_name');
+  if (error) throw error;
+  return (data ?? []) as unknown as ProjectMemberCandidate[];
+}
+
+export interface ProjectMemberInput {
+  project_id: string; profile_id: string; role_label: string; start_date: string;
+  end_date: string | null; status: 'ativo' | 'inativo'; notes: string | null;
+}
+
+export async function createProjectMember(input: ProjectMemberInput): Promise<void> {
+  const { error } = await supabase.from('project_members').insert({
+    ...input, project_role: 'collaborator', can_edit: false,
+  });
+  if (error) throw error;
+}
+
+export async function updateProjectMember(
+  id: string,
+  patch: Partial<Omit<ProjectMemberInput, 'project_id' | 'profile_id'>>,
+): Promise<void> {
+  const { error } = await supabase.from('project_members').update(patch).eq('id', id);
+  if (error) throw error;
 }
 
 /** Todas as empresas, inclusive inativas, para a tela de administracao. */

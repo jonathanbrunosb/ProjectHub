@@ -47,6 +47,7 @@ export type FinancialModuleMode = 'inherit' | 'enabled' | 'disabled';
 export interface Profile {
   id: string;
   email: string;
+  employee_number: string | null;
   full_name: string;
   job_title: string | null;
   role: RoleKey;
@@ -290,6 +291,8 @@ export interface ResourceAllocation {
   id: string; project_id: string; profile_id: string;
   role_label: string | null; period_start: string; period_end: string;
   allocated_hours: number; allocation_pct: number | null;
+  description: string | null; status: 'ativa' | 'cancelada';
+  overload_justification: string | null;
 }
 
 export interface ResourceCapacity {

@@ -118,6 +118,8 @@ export interface AllocationRow {
   id: string; project_id: string; profile_id: string;
   role_label: string | null; period_start: string; period_end: string;
   allocated_hours: number; allocation_pct: number | null;
+  description: string | null; status: 'ativa' | 'cancelada';
+  overload_justification: string | null;
   profile: { full_name: string; area_id: string | null; area: { name: string } | null } | null;
   project: { code: string; name: string } | null;
 }
@@ -125,7 +127,8 @@ export interface AllocationRow {
 export async function listAllocations(projectId?: string): Promise<AllocationRow[]> {
   let query = supabase
     .from('resource_allocations')
-    .select('id,project_id,profile_id,role_label,period_start,period_end,allocated_hours,allocation_pct,profile:profiles(full_name,area_id,area:areas!profiles_area_id_fkey(name)),project:projects(code,name)')
+    .select('id,project_id,profile_id,role_label,period_start,period_end,allocated_hours,allocation_pct,description,status,overload_justification,profile:profiles(full_name,area_id,area:areas!profiles_area_id_fkey(name)),project:projects(code,name)')
+    .eq('status', 'ativa')
     .order('period_start', { ascending: false });
   if (projectId) query = query.eq('project_id', projectId);
   const { data, error } = await query;
@@ -141,8 +144,30 @@ export async function upsertAllocation(input: Partial<AllocationRow> & { project
   if (error) throw error;
 }
 
-export async function deleteAllocation(id: string): Promise<void> {
-  const { error } = await supabase.from('resource_allocations').delete().eq('id', id);
+export interface CapacityCheck {
+  capacity_hours: number; current_hours: number; requested_hours: number;
+  total_hours: number; total_pct: number; limit_pct: number; overloaded: boolean;
+}
+
+export async function checkAllocationCapacity(input: {
+  projectId: string; profileId: string; periodStart: string; periodEnd: string; allocatedHours: number; excludeId?: string;
+}): Promise<CapacityCheck> {
+  const { data, error } = await supabase.rpc('check_resource_allocation_capacity', {
+    p_project_id: input.projectId,
+    p_profile_id: input.profileId,
+    p_period_start: input.periodStart,
+    p_period_end: input.periodEnd,
+    p_allocated_hours: input.allocatedHours,
+    p_exclude_allocation_id: input.excludeId ?? null,
+  });
+  if (error) throw error;
+  const row = (data as CapacityCheck[] | null)?.[0];
+  if (!row) throw new Error('Nao foi possivel calcular a capacidade do colaborador.');
+  return row;
+}
+
+export async function cancelAllocation(id: string): Promise<void> {
+  const { error } = await supabase.from('resource_allocations').update({ status: 'cancelada' }).eq('id', id);
   if (error) throw error;
 }
 

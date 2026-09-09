@@ -355,6 +355,60 @@ select pg_temp.assert(
   (select count(*) from public.tasks where project_id = :'linked_project_id') = 8,
   'cadastro inicial instancia as oito tarefas do template vinculado');
 
+-- =============================================================================
+-- 10. MEMBROS, CAPACIDADE E HISTORICO DE ALOCACAO
+-- =============================================================================
+insert into public.project_members (
+  project_id, profile_id, project_role, role_label, start_date, status
+) values (
+  '99999999-9999-4999-8999-000000000001',
+  '11111111-1111-4111-8111-000000000008',
+  'collaborator', 'Membro', current_date, 'ativo'
+);
+
+select pg_temp.assert_raises(
+  $q$ insert into public.project_members
+      (project_id, profile_id, project_role, role_label, start_date, status)
+      values ('99999999-9999-4999-8999-000000000001',
+              '11111111-1111-4111-8111-000000000008',
+              'collaborator', 'Especialista', current_date, 'ativo') $q$,
+  'o mesmo colaborador nao possui dois vinculos ativos no projeto');
+
+select pg_temp.assert_raises(
+  $q$ insert into public.resource_allocations
+      (project_id, profile_id, period_start, period_end, allocated_hours)
+      values ('99999999-9999-4999-8999-000000000001',
+              '11111111-1111-4111-8111-000000000008',
+              current_date, current_date + 6, 400) $q$,
+  'sobrecarga sem justificativa e rejeitada');
+
+insert into public.resource_allocations (
+  project_id, profile_id, period_start, period_end, allocated_hours,
+  allocation_pct, overload_justification
+) values (
+  '99999999-9999-4999-8999-000000000001',
+  '11111111-1111-4111-8111-000000000008',
+  current_date, current_date + 6, 400, 200,
+  'Sobrecarga aprovada pelo gestor responsavel.'
+);
+
+select pg_temp.assert(
+  (select overloaded from app.calculate_resource_allocation_capacity(
+    '11111111-1111-4111-8111-000000000008', current_date, current_date + 6, 1, null
+  )),
+  'capacidade considera alocacoes em todos os projetos');
+
+update public.resource_allocations
+set status = 'cancelada'
+where project_id = '99999999-9999-4999-8999-000000000001'
+  and profile_id = '11111111-1111-4111-8111-000000000008';
+
+select pg_temp.assert(
+  (select current_hours = 0 from app.calculate_resource_allocation_capacity(
+    '11111111-1111-4111-8111-000000000008', current_date, current_date + 6, 1, null
+  )),
+  'alocacao cancelada preserva historico sem consumir capacidade');
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
 delete from public.projects where id = :'linked_project_id';

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { Drawer } from '@/components/ui/Modal';
@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
 import { createTask, deleteTask, nextTaskCode, updateTask, type TaskWithContext } from '@/services/tasks';
-import { listActiveProfiles } from '@/services/projects';
+import { listProjectMembers } from '@/services/projects';
 import { getProjectGoalSettings, listTaskGoalConfigs, upsertTaskGoalConfig } from '@/services/goalIndicators';
 import { priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
 import type { Priority, TaskStatus } from '@/types/domain';
@@ -39,7 +39,16 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
   const [goalForm, setGoalForm] = useState(blankGoal);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const profiles = useQuery({ queryKey: ['profiles', 'active'], queryFn: listActiveProfiles, enabled: open });
+  const members = useQuery({ queryKey: ['members', projectId], queryFn: () => listProjectMembers(projectId), enabled: open });
+  const assignees = useMemo(() => {
+    const options = (members.data ?? [])
+      .filter((member) => member.status === 'ativo' && member.profile?.active)
+      .map((member) => ({ id: member.profile_id, name: member.profile?.full_name ?? 'Colaborador' }));
+    if (task?.assignee_id && task.assignee && !options.some((person) => person.id === task.assignee_id)) {
+      options.push({ id: task.assignee_id, name: `${task.assignee.full_name} (vinculo historico)` });
+    }
+    return options;
+  }, [members.data, task]);
   const goalSettings = useQuery({
     queryKey: ['goal-settings', projectId], queryFn: () => getProjectGoalSettings(projectId), enabled: open,
   });
@@ -177,7 +186,7 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
           <Field label="Responsavel">
             <Select value={form.assignee_id} onChange={(e) => set('assignee_id', e.target.value)}>
               <option value="">Nao atribuido</option>
-              {profiles.data?.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              {assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
             </Select>
           </Field>
 
