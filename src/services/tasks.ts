@@ -11,6 +11,8 @@ export interface TaskWithContext extends Task {
   project: { code: string; name: string } | null;
 }
 
+export type CreateTaskInput = Partial<Task> & { project_id: string; code: string; title: string };
+
 export async function listTasks(projectId?: string): Promise<TaskWithContext[]> {
   let query = supabase
     .from('tasks')
@@ -35,10 +37,18 @@ export async function listMyTasks(profileId: string): Promise<TaskWithContext[]>
   return (data ?? []) as unknown as TaskWithContext[];
 }
 
-export async function createTask(input: Partial<Task> & { project_id: string; code: string; title: string }): Promise<string> {
+export async function createTask(input: CreateTaskInput): Promise<string> {
   const { data, error } = await supabase.from('tasks').insert(input).select('id').single();
   if (error) throw error;
   return data.id as unknown as string;
+}
+
+/** Insere a importacao em uma unica requisicao; se uma linha falhar, nenhuma e' gravada. */
+export async function createTasks(inputs: CreateTaskInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+  const { error } = await supabase.from('tasks').insert(inputs);
+  if (error) throw error;
+  return inputs.length;
 }
 
 export async function updateTask(id: string, patch: Partial<Task>): Promise<void> {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, LayoutList, Columns, GanttChartSquare, CalendarRange } from 'lucide-react';
+import { Plus, LayoutList, Columns, GanttChartSquare, CalendarRange, Upload } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +17,7 @@ import { listDependencies, type TaskWithContext } from '@/services/tasks';
 import { useTableState } from '@/hooks/useTableState';
 import { TaskBoard } from './TaskBoard';
 import { TaskModal } from './TaskModal';
+import { TaskImportModal } from './TaskImportModal';
 
 type Mode = 'lista' | 'kanban' | 'timeline' | 'gantt';
 
@@ -43,6 +44,7 @@ export function TaskList({
   const [areaFilter, setAreaFilter] = useState('');
   const [editing, setEditing] = useState<TaskWithContext | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const table = useTableState(module);
 
   const { data: dependencies = [] } = useQuery({
@@ -196,7 +198,12 @@ export function TaskList({
         )}
 
         {canEdit && projectId && (
-          <Button className="ml-auto" onClick={() => setCreating(true)} icon={<Plus className="h-4 w-4" />}>Nova tarefa</Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setImporting(true)} icon={<Upload className="h-4 w-4" />}>
+              Importar Excel
+            </Button>
+            <Button onClick={() => setCreating(true)} icon={<Plus className="h-4 w-4" />}>Nova tarefa</Button>
+          </div>
         )}
       </div>
 
@@ -232,13 +239,21 @@ export function TaskList({
       )}
 
       {projectId && (
-        <TaskModal
-          open={creating || Boolean(editing)}
-          onClose={() => { setCreating(false); setEditing(null); }}
-          projectId={editing?.project_id ?? projectId}
-          task={editing}
-          canEdit={canEdit}
-        />
+        <>
+          <TaskModal
+            open={creating || Boolean(editing)}
+            onClose={() => { setCreating(false); setEditing(null); }}
+            projectId={editing?.project_id ?? projectId}
+            task={editing}
+            canEdit={canEdit}
+          />
+          <TaskImportModal
+            open={importing}
+            onClose={() => setImporting(false)}
+            projectId={projectId}
+            existingTasks={tasks}
+          />
+        </>
       )}
       {!projectId && editing && (
         <TaskModal
