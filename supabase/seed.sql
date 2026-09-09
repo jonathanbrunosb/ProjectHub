@@ -561,11 +561,15 @@ on conflict do nothing;
 -- -----------------------------------------------------------------------------
 -- Alocacao de recursos (gera sobrecarga proposital em parte do time)
 -- -----------------------------------------------------------------------------
-insert into public.resource_allocations (project_id, profile_id, role_label, period_start, period_end, allocated_hours, allocation_pct)
+insert into public.resource_allocations (
+  project_id, profile_id, role_label, period_start, period_end,
+  allocated_hours, allocation_pct, overload_justification
+)
 select p.id, m.profile_id, m.role_label,
        date_trunc('month', current_date)::date,
        (date_trunc('month', current_date) + interval '3 month - 1 day')::date,
-       a.hours, a.pct
+       a.hours, a.pct,
+       'Carga demonstrativa aprovada para validar o alerta de sobrecarga.'
 from public.projects p
 join public.project_members m on m.project_id = p.id
 join (values
