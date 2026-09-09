@@ -50,6 +50,10 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
   });
 
   const canManage = can('portfolio.manage') || can('project.write');
+  const isArchived = Boolean(project.archived_at);
+  // Projeto arquivado: correcoes cadastrais continuam possiveis, mas so' para
+  // Admin/PMO - o mesmo guard aplicado no banco (0024_project_governance_guard).
+  const canOpenEdit = isArchived ? can('portfolio.manage') : canManage;
 
   return (
     <>
@@ -66,6 +70,7 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
               <HealthBadge health={project.health} manual={project.health_is_manual} />
               <ProjectStatusBadge status={project.status} />
               <PriorityBadge priority={project.priority} />
+              {isArchived && <Badge tone="neutral">Arquivado</Badge>}
               {Number(project.days_overdue) > 0 && (
                 <Badge tone="danger">{project.days_overdue} dias de atraso</Badge>
               )}
@@ -97,7 +102,7 @@ export function ProjectHeader({ project, onEdit }: { project: ProjectOverview; o
                 Voltar ao automatico
               </Button>
             )}
-            {canManage && (
+            {canOpenEdit && (
               <Button size="sm" onClick={onEdit} icon={<Pencil className="h-3.5 w-3.5" />}>Editar</Button>
             )}
           </div>
