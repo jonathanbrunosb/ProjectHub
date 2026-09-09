@@ -16,9 +16,11 @@ import { useFinancialModule } from '@/hooks/useFinancialModule';
 import { resolveFinancialEnabled } from '@/lib/financialModule';
 import { describeError } from '@/lib/supabase/client';
 import {
-  getProject, getProjectOverview, listProjectMembers, updateProject,
+  getProject, getProjectOverview, listAllCompanies, listProfiles, listProjectMembers,
+  updateProject, ProjectConflictError,
 } from '@/services/projects';
-import type { FinancialModuleMode } from '@/types/domain';
+import { listAreas } from '@/services/areas';
+import type { FinancialModuleMode, Profile } from '@/types/domain';
 import { listMilestones, listTasks } from '@/services/tasks';
 import { listActionPlans, listRisks } from '@/services/risks';
 import { listAuditLog, listCalendarConflicts, listDecisions } from '@/services/governance';
@@ -381,14 +383,29 @@ function HistoryTab({ projectId }: { projectId: string }) {
   );
 }
 
-function EditProjectModal({
+/** Nome, e-mail ou (se ja selecionado) inclui a pessoa mesmo fora do filtro - nao deixa a selecao atual sumir da lista. */
+function filterProfiles(profiles: Profile[], search: string, keepId?: string | null): Profile[] {
+  const q = search.trim().toLowerCase();
+  return profiles.filter((p) => p.id === keepId
+    || !q
+    || p.full_name.toLowerCase().includes(q)
+    || p.email.toLowerCase().includes(q));
+}
+
+export function EditProjectModal({
   open, onClose, project,
 }: { open: boolean; onClose: () => void; project: NonNullable<Awaited<ReturnType<typeof getProject>>> }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const canManageFinancial = can('financial_module.manage');
+  // Troca de Sponsor/Owner/escopo organizacional e' governanca do portfolio,
+  // nao edicao operacional - por isso capabilities dedicadas, fora de project.write.
+  const canChangeSponsor = can('project.change_sponsor');
+  const canChangeOwner = can('project.change_owner');
+  const canChangeOrgScope = can('project.change_organizational_scope');
   const { globalEnabled, effectiveEnabled } = useFinancialModule(project.financial_module_mode);
+
   const [form, setForm] = useState({
     name: project.name, category: project.category, phase: project.phase ?? '',
     status: project.status, priority: project.priority,
@@ -398,8 +415,29 @@ function EditProjectModal({
     progress_method: project.progress_method,
     progress_actual: String(project.progress_actual),
     financial_module_mode: project.financial_module_mode,
+    sponsor_id: project.sponsor_id ?? '',
+    owner_id: project.owner_id ?? '',
+    company_id: project.company_id ?? '',
+    area_id: project.area_id ?? '',
   });
   const [confirmingFinancialOff, setConfirmingFinancialOff] = useState(false);
+  const [confirmingOwnerChange, setConfirmingOwnerChange] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [sponsorSearch, setSponsorSearch] = useState('');
+  const [ownerSearch, setOwnerSearch] = useState('');
+
+  // Buscados sempre que o modal abre (nao so' quando editavel): mesmo quem
+  // nao tem a capability precisa ver o nome atual de Sponsor/Owner/Empresa/
+  // Area no campo somente leitura, nao so' quem pode edita-los.
+  const profiles = useQuery({ queryKey: ['profiles', 'all'], queryFn: listProfiles, enabled: open });
+  const companies = useQuery({ queryKey: ['companies', 'all'], queryFn: listAllCompanies, enabled: open });
+  const areas = useQuery({ queryKey: ['areas'], queryFn: listAreas, enabled: open });
+
+  const sponsorName = profiles.data?.find((p) => p.id === project.sponsor_id)?.full_name ?? 'Nao definido';
+  const ownerName = profiles.data?.find((p) => p.id === project.owner_id)?.full_name ?? 'Nao definido';
+  const areaName = areas.data?.find((a) => a.id === project.area_id)?.name ?? 'Nao definida';
+  const companyName = companies.data?.find((c) => c.id === project.company_id)?.name ?? 'Nao definida';
+  const selectedAreaGerencia = areas.data?.find((a) => a.id === form.area_id)?.business_unit?.name ?? null;
 
   const save = useMutation({
     mutationFn: async (financialModeOverride?: FinancialModuleMode) => {
@@ -424,19 +462,32 @@ function EditProjectModal({
         ...(canManageFinancial
           ? { financial_module_mode: financialModeOverride ?? form.financial_module_mode }
           : {}),
-      });
+        ...(canChangeSponsor ? { sponsor_id: form.sponsor_id || null } : {}),
+        ...(canChangeOwner ? { owner_id: form.owner_id || null } : {}),
+        ...(canChangeOrgScope ? { company_id: form.company_id || null, area_id: form.area_id || null } : {}),
+        // A troca do Owner NUNCA transfere tarefas/alocacoes ja atribuidas ao
+        // responsavel anterior - isso e' acao separada e explicita, nao um
+        // efeito colateral automatico da troca cadastral.
+      }, project.updated_at);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', project.id] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Projeto atualizado');
       setConfirmingFinancialOff(false);
+      setConfirmingOwnerChange(false);
       onClose();
     },
-    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+    onError: (e) => {
+      if (e instanceof ProjectConflictError) {
+        setConflict(true);
+        return;
+      }
+      toast.error('Nao foi possivel salvar', describeError(e));
+    },
   });
 
-  function handleSave() {
+  function proceedToFinancialCheck() {
     // Desativar o modulo financeiro num projeto que ja tem dados exige uma
     // confirmacao extra: os dados continuam intactos, mas somem da experiencia
     // e das consolidacoes - a pessoa precisa saber disso antes de confirmar.
@@ -449,6 +500,15 @@ function EditProjectModal({
       return;
     }
     save.mutate(undefined);
+  }
+
+  function handleSave() {
+    const ownerChanged = canChangeOwner && form.owner_id !== (project.owner_id ?? '');
+    if (ownerChanged) {
+      setConfirmingOwnerChange(true);
+      return;
+    }
+    proceedToFinancialCheck();
   }
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -466,67 +526,178 @@ function EditProjectModal({
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Nome" required className="sm:col-span-2">
-          <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
-        </Field>
-        <Field label="Categoria"><Input value={form.category} onChange={(e) => set('category', e.target.value)} /></Field>
-        <Field label="Fase atual"><Input value={form.phase} onChange={(e) => set('phase', e.target.value)} /></Field>
-        <Field label="Status">
-          <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
-            {Object.entries(projectStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-        </Field>
-        <Field label="Prioridade">
-          <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-            {Object.entries(priorityLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-        </Field>
-        <Field label="Inicio"><Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} /></Field>
-        <Field label="Data-alvo"><Input type="date" value={form.target_date} onChange={(e) => set('target_date', e.target.value)} /></Field>
+      <div className="space-y-5">
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Identificacao</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Nome" required className="sm:col-span-2">
+              <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
+            </Field>
+            <Field label="Categoria"><Input value={form.category} onChange={(e) => set('category', e.target.value)} /></Field>
+            <Field label="Fase atual"><Input value={form.phase} onChange={(e) => set('phase', e.target.value)} /></Field>
+            <Field label="Objetivo" className="sm:col-span-2">
+              <Textarea value={form.objective} onChange={(e) => set('objective', e.target.value)} />
+            </Field>
+            <Field label="Escopo" className="sm:col-span-2">
+              <Textarea value={form.scope} onChange={(e) => set('scope', e.target.value)} />
+            </Field>
+            <Field label="Resultados esperados" className="sm:col-span-2">
+              <Textarea value={form.expected_results} onChange={(e) => set('expected_results', e.target.value)} />
+            </Field>
+          </div>
+        </section>
 
-        <Field
-          label="Metodologia de progresso"
-          hint="Automatico calcula pela media ponderada das tarefas; manual usa o valor informado."
-        >
-          <Select value={form.progress_method} onChange={(e) => set('progress_method', e.target.value)}>
-            <option value="automatico">Automatico (por tarefas e pesos)</option>
-            <option value="manual">Manual (informado pelo Owner)</option>
-          </Select>
-        </Field>
-        {form.progress_method === 'manual' && (
-          <Field label="Progresso realizado (%)">
-            <Input type="number" min="0" max="100" value={form.progress_actual} onChange={(e) => set('progress_actual', e.target.value)} />
-          </Field>
-        )}
+        <section className="border-t border-border pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Governanca</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Sponsor" className="sm:col-span-2"
+              hint={!canChangeSponsor ? 'Somente Admin ou PMO altera o Sponsor.' : undefined}
+            >
+              {canChangeSponsor ? (
+                <div className="space-y-1.5">
+                  <Input
+                    aria-label="Buscar sponsor"
+                    placeholder="Buscar por nome ou e-mail..."
+                    value={sponsorSearch}
+                    onChange={(e) => setSponsorSearch(e.target.value)}
+                  />
+                  <Select aria-label="Sponsor" value={form.sponsor_id} onChange={(e) => set('sponsor_id', e.target.value)} disabled={profiles.isLoading}>
+                    <option value="">Sem sponsor definido</option>
+                    {filterProfiles(profiles.data ?? [], sponsorSearch, project.sponsor_id).map((p) => (
+                      <option key={p.id} value={p.id}>{p.full_name}{!p.active ? ' (inativo)' : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              ) : (
+                <Input aria-label="Sponsor" readOnly value={sponsorName} className="text-muted" />
+              )}
+            </Field>
 
-        <Field label="Objetivo" className="sm:col-span-2">
-          <Textarea value={form.objective} onChange={(e) => set('objective', e.target.value)} />
-        </Field>
-        <Field label="Escopo" className="sm:col-span-2">
-          <Textarea value={form.scope} onChange={(e) => set('scope', e.target.value)} />
-        </Field>
-        <Field label="Resultados esperados" className="sm:col-span-2">
-          <Textarea value={form.expected_results} onChange={(e) => set('expected_results', e.target.value)} />
-        </Field>
+            <Field
+              label="Owner" className="sm:col-span-2"
+              hint={!canChangeOwner ? 'Somente Admin ou PMO altera o Owner.' : 'A troca nao transfere automaticamente tarefas ou alocacoes ja atribuidas.'}
+            >
+              {canChangeOwner ? (
+                <div className="space-y-1.5">
+                  <Input
+                    aria-label="Buscar owner"
+                    placeholder="Buscar por nome ou e-mail..."
+                    value={ownerSearch}
+                    onChange={(e) => setOwnerSearch(e.target.value)}
+                  />
+                  <Select aria-label="Owner" value={form.owner_id} onChange={(e) => set('owner_id', e.target.value)} disabled={profiles.isLoading}>
+                    <option value="">Sem owner definido</option>
+                    {filterProfiles(profiles.data ?? [], ownerSearch, project.owner_id).map((p) => (
+                      <option key={p.id} value={p.id}>{p.full_name}{!p.active ? ' (inativo)' : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              ) : (
+                <Input aria-label="Owner" readOnly value={ownerName} className="text-muted" />
+              )}
+            </Field>
+
+            <Field
+              label="Empresa"
+              hint={!canChangeOrgScope ? 'Somente Admin ou PMO altera a Empresa.' : undefined}
+            >
+              {canChangeOrgScope ? (
+                <Select aria-label="Empresa" value={form.company_id} onChange={(e) => set('company_id', e.target.value)} disabled={companies.isLoading}>
+                  <option value="">Sem empresa definida</option>
+                  {(companies.data ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}{!c.active ? ' (inativa)' : ''}</option>
+                  ))}
+                </Select>
+              ) : (
+                <Input aria-label="Empresa" readOnly value={companyName} className="text-muted" />
+              )}
+            </Field>
+
+            <Field
+              label="Area responsavel"
+              hint={!canChangeOrgScope
+                ? 'Somente Admin ou PMO altera a Area responsavel.'
+                : (selectedAreaGerencia ? `Gerencia: ${selectedAreaGerencia}` : 'Projeto pode envolver outras areas via alocacoes.')}
+            >
+              {canChangeOrgScope ? (
+                <Select aria-label="Area responsavel" value={form.area_id} onChange={(e) => set('area_id', e.target.value)} disabled={areas.isLoading}>
+                  <option value="">Sem area definida</option>
+                  {(areas.data ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </Select>
+              ) : (
+                <Input aria-label="Area responsavel" readOnly value={areaName} className="text-muted" />
+              )}
+            </Field>
+          </div>
+        </section>
+
+        <section className="border-t border-border pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Planejamento</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Status">
+              <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
+                {Object.entries(projectStatusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </Field>
+            <Field label="Prioridade">
+              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+                {Object.entries(priorityLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </Field>
+            <Field label="Inicio"><Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} /></Field>
+            <Field
+              label="Data-alvo"
+              hint={project.baseline_target_date ? `Baseline aprovada: ${formatDate(project.baseline_target_date)} (nao e' alterada aqui)` : undefined}
+            >
+              <Input type="date" value={form.target_date} onChange={(e) => set('target_date', e.target.value)} />
+            </Field>
+
+            <Field
+              label="Metodologia de progresso"
+              hint="Automatico calcula pela media ponderada das tarefas; manual usa o valor informado."
+            >
+              <Select value={form.progress_method} onChange={(e) => set('progress_method', e.target.value)}>
+                <option value="automatico">Automatico (por tarefas e pesos)</option>
+                <option value="manual">Manual (informado pelo Owner)</option>
+              </Select>
+            </Field>
+            {form.progress_method === 'manual' && (
+              <Field label="Progresso realizado (%)">
+                <Input type="number" min="0" max="100" value={form.progress_actual} onChange={(e) => set('progress_actual', e.target.value)} />
+              </Field>
+            )}
+          </div>
+        </section>
 
         {canManageFinancial && (
-          <Field
-            label="Modulos do projeto - Gestao financeira"
-            className="sm:col-span-2"
-            hint={`Configuracao global: ${globalEnabled ? 'Ativada' : 'Desativada'} · Status efetivo neste projeto: ${effectiveEnabled ? 'Ativada' : 'Desativada'}`}
-          >
-            <Select
-              value={form.financial_module_mode}
-              onChange={(e) => setForm((f) => ({ ...f, financial_module_mode: e.target.value as FinancialModuleMode }))}
+          <section className="border-t border-border pt-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Informacoes complementares</h3>
+            <Field
+              label="Modulos do projeto - Gestao financeira"
+              hint={`Configuracao global: ${globalEnabled ? 'Ativada' : 'Desativada'} · Status efetivo neste projeto: ${effectiveEnabled ? 'Ativada' : 'Desativada'}`}
             >
-              {(Object.entries(financialModeLabel) as [FinancialModuleMode, string][]).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </Select>
-          </Field>
+              <Select
+                value={form.financial_module_mode}
+                onChange={(e) => setForm((f) => ({ ...f, financial_module_mode: e.target.value as FinancialModuleMode }))}
+              >
+                {(Object.entries(financialModeLabel) as [FinancialModuleMode, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </Select>
+            </Field>
+          </section>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmingOwnerChange}
+        onClose={() => setConfirmingOwnerChange(false)}
+        onConfirm={() => { setConfirmingOwnerChange(false); proceedToFinancialCheck(); }}
+        title="Trocar o responsavel pelo projeto"
+        confirmLabel="Continuar"
+        description="O responsavel (Owner) pelo projeto sera alterado. As tarefas e alocacoes atualmente atribuidas ao responsavel anterior serao preservadas - nada e' transferido automaticamente. Deseja continuar?"
+      />
 
       <ConfirmDialog
         open={confirmingFinancialOff}
@@ -536,6 +707,20 @@ function EditProjectModal({
         title="Desativar gestao financeira neste projeto"
         confirmLabel="Desativar"
         description="Este projeto possui informacoes financeiras cadastradas. Ao desativar a gestao financeira, os dados serao preservados, mas ficarao ocultos e nao serao considerados nas consolidacoes."
+      />
+
+      <ConfirmDialog
+        open={conflict}
+        onClose={() => setConflict(false)}
+        onConfirm={() => {
+          setConflict(false);
+          queryClient.invalidateQueries({ queryKey: ['project', project.id] });
+          onClose();
+        }}
+        danger={false}
+        title="O projeto foi alterado"
+        confirmLabel="Recarregar e fechar"
+        description="Alguem mais alterou este projeto (ou sua permissao mudou) desde que este formulario foi aberto. Para nao sobrescrever a alteracao, recarregue os dados atuais antes de tentar salvar de novo."
       />
     </Modal>
   );

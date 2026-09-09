@@ -116,9 +116,30 @@ export async function createProject(input: CreateProjectInput): Promise<string> 
   return data.id as unknown as string;
 }
 
-export async function updateProject(id: string, patch: Partial<Project>): Promise<void> {
-  const { error } = await supabase.from('projects').update(patch).eq('id', id);
+/**
+ * `expectedUpdatedAt`, quando informado, so' aplica o UPDATE se `updated_at`
+ * no banco ainda for esse valor (concorrencia otimista - evita que a edicao
+ * de alguem sobrescreva silenciosamente uma alteracao feita por outra pessoa
+ * enquanto o formulario estava aberto). Zero linhas afetadas nesse caso
+ * lanca ProjectConflictError; quem chama decide se recarrega e tenta de novo.
+ */
+export async function updateProject(
+  id: string, patch: Partial<Project>, expectedUpdatedAt?: string,
+): Promise<void> {
+  let query = supabase.from('projects').update(patch).eq('id', id);
+  if (expectedUpdatedAt) query = query.eq('updated_at', expectedUpdatedAt);
+  const { data, error } = await query.select('id');
   if (error) throw error;
+  if (expectedUpdatedAt && (data ?? []).length === 0) {
+    throw new ProjectConflictError();
+  }
+}
+
+export class ProjectConflictError extends Error {
+  constructor() {
+    super('O projeto foi alterado por outra pessoa (ou voce perdeu a permissao de edicao) desde que o formulario foi aberto. Recarregue antes de salvar.');
+    this.name = 'ProjectConflictError';
+  }
 }
 
 export async function deleteProject(id: string): Promise<void> {

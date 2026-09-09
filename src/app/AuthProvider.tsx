@@ -41,7 +41,11 @@ export type Capability =
   | 'decision.decide'
   | 'reports.export'
   | 'financial_module.manage'
-  | 'goal_indicator.manage';
+  | 'goal_indicator.manage'
+  | 'project.change_sponsor'
+  | 'project.change_owner'
+  | 'project.change_organizational_scope'
+  | 'project.change_baseline';
 
 const matrix: Record<Capability, RoleKey[]> = {
   'portfolio.manage': ['admin', 'pmo'],
@@ -59,6 +63,14 @@ const matrix: Record<Capability, RoleKey[]> = {
   // diretoria/gerencia executiva neste app (mesmo grupo de decision.decide).
   'financial_module.manage': ['admin', 'pmo', 'sponsor'],
   'goal_indicator.manage': ['admin', 'pmo', 'sponsor'],
+  // Troca de Sponsor/Owner/escopo organizacional/baseline e' acao de
+  // governanca do portfolio, nao operacional do projeto - por isso nao entra
+  // em project.write (que o proprio Owner/Collaborator ja possuem). O Owner
+  // nao ganha permissao de trocar a si mesmo ou ao Sponsor so' por ser Owner.
+  'project.change_sponsor': ['admin', 'pmo'],
+  'project.change_owner': ['admin', 'pmo'],
+  'project.change_organizational_scope': ['admin', 'pmo'],
+  'project.change_baseline': ['admin', 'pmo'],
 };
 
 const AuthContext = createContext<AuthApi | null>(null);
