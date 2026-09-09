@@ -15,7 +15,8 @@ import {
   type ProjectMemberRow,
 } from '@/services/projects';
 import {
-  cancelAllocation, checkAllocationCapacity, listAllocations, listTaskPlannedAllocation, upsertAllocation,
+  cancelAllocation, checkAllocationCapacity, listAllocations, listLegacyAllocationComparison,
+  listTaskPlannedAllocation, upsertAllocation,
   type AllocationRow, type CapacityCheck,
 } from '@/services/governance';
 import type { TaskPlannedAllocationRow } from '@/types/domain';
@@ -46,6 +47,7 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
   const queryClient = useQueryClient();
   const allocations = useQuery({ queryKey: ['allocations', projectId], queryFn: () => listAllocations(projectId) });
   const planned = useQuery({ queryKey: ['task-planned-allocation', projectId], queryFn: () => listTaskPlannedAllocation(projectId) });
+  const legacyComparison = useQuery({ queryKey: ['legacy-allocation-comparison', projectId], queryFn: () => listLegacyAllocationComparison(projectId) });
   const candidates = useQuery({ queryKey: ['project-member-candidates'], queryFn: listProjectMemberCandidates, enabled: canManage });
   const [areaFilter, setAreaFilter] = useState('');
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
   const [allocationForm, setAllocationForm] = useState(blankAllocation);
   const [editingAllocation, setEditingAllocation] = useState<AllocationRow | null>(null);
   const [cancelTarget, setCancelTarget] = useState<AllocationRow | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<AllocationRow | null>(null);
   const [capacity, setCapacity] = useState<CapacityCheck | null>(null);
 
   const activeMembers = useMemo(() => members.filter((m) => m.status === 'ativo' && m.profile?.active), [members]);
@@ -107,8 +110,15 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
     queryClient.invalidateQueries({ queryKey: ['members', projectId] });
     queryClient.invalidateQueries({ queryKey: ['allocations'] });
     queryClient.invalidateQueries({ queryKey: ['task-planned-allocation'] });
+    queryClient.invalidateQueries({ queryKey: ['legacy-allocation-comparison'] });
     queryClient.invalidateQueries({ queryKey: ['resource-capacity'] });
   };
+
+  const legacyComparisonById = useMemo(() => {
+    const map = new Map<string, { calculated_hours: number; divergence_hours: number; divergence_pct: number | null }>();
+    for (const c of legacyComparison.data ?? []) map.set(c.allocation_id, c);
+    return map;
+  }, [legacyComparison.data]);
 
   const saveMember = useMutation({
     mutationFn: async () => {
@@ -184,6 +194,18 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
     mutationFn: (id: string) => cancelAllocation(id),
     onSuccess: () => { invalidate(); setCancelTarget(null); toast.success('Registro cancelado', 'O registro foi preservado na trilha de auditoria.'); },
     onError: (error) => toast.error('Nao foi possivel cancelar', describeError(error)),
+  });
+
+  /**
+   * "Arquivar" um registro legado e' o mesmo cancelamento logico (status
+   * 'ativa' -> 'cancelada', preserva auditoria) - so' o rotulo/fluxo de
+   * confirmacao muda, para deixar claro que a decisao foi informada pela
+   * comparacao com o calculo automatico (secao 22: nunca convertido sozinho).
+   */
+  const archive = useMutation({
+    mutationFn: (id: string) => cancelAllocation(id),
+    onSuccess: () => { invalidate(); setArchiveTarget(null); toast.success('Registro legado arquivado', 'O planejamento calculado pelas tarefas passa a ser a unica fonte para este colaborador/projeto.'); },
+    onError: (error) => toast.error('Nao foi possivel arquivar', describeError(error)),
   });
 
   function openMemberEdit(member: ProjectMemberRow) {
@@ -310,16 +332,31 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
           {filteredLegacyAllocations.length > 0 && (
             <details className="border-t border-border px-4 py-3">
               <summary className="cursor-pointer text-xs font-medium text-muted">Dados legados (cadastro manual anterior a automacao) · {filteredLegacyAllocations.length}</summary>
+              <p className="mt-2 text-xs text-muted">Comparação com o planejado que as tarefas calculam hoje para o mesmo colaborador e período. Nada é convertido automaticamente — arquive quando confirmar que o cálculo já reflete o planejamento.</p>
               <ul className="mt-2 divide-y divide-border">
-                {filteredLegacyAllocations.map((allocation) => (
-                  <li key={allocation.id} className="py-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div><p className="text-sm font-medium">{allocation.profile?.full_name ?? '—'}</p><p className="text-xs text-muted">{allocation.description || allocation.role_label || 'Sem descricao'}</p></div>
-                      <b className="whitespace-nowrap text-sm tabular-nums">{Number(allocation.allocated_hours).toFixed(0)} h</b>
-                    </div>
-                    <p className="mt-1 text-xs text-muted">{formatDate(allocation.period_start)} a {formatDate(allocation.period_end)}</p>
-                  </li>
-                ))}
+                {filteredLegacyAllocations.map((allocation) => {
+                  const cmp = legacyComparisonById.get(allocation.id);
+                  return (
+                    <li key={allocation.id} className="py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div><p className="text-sm font-medium">{allocation.profile?.full_name ?? '—'}</p><p className="text-xs text-muted">{allocation.description || allocation.role_label || 'Sem descricao'}</p></div>
+                        <div className="flex items-center gap-1">
+                          <b className="whitespace-nowrap text-sm tabular-nums">{Number(allocation.allocated_hours).toFixed(0)} h</b>
+                          {canManage && <Button size="icon" variant="ghost" aria-label="Arquivar registro legado" onClick={() => setArchiveTarget(allocation)}><UserMinus className="h-3.5 w-3.5" /></Button>}
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">{formatDate(allocation.period_start)} a {formatDate(allocation.period_end)}</p>
+                      {cmp && (
+                        <p className={`mt-1 text-xs ${cmp.divergence_pct != null && Math.abs(cmp.divergence_pct) > 20 ? 'text-warn' : 'text-muted'}`}>
+                          Calculado pelas tarefas hoje: {cmp.calculated_hours.toFixed(0)}h
+                          {cmp.divergence_pct != null && (
+                            <> · divergência de {cmp.divergence_hours > 0 ? '+' : ''}{cmp.divergence_hours.toFixed(0)}h ({cmp.divergence_pct.toFixed(0)}%)</>
+                          )}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </details>
           )}
@@ -354,6 +391,20 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
 
       <ConfirmDialog open={Boolean(inactivateMember)} onClose={() => setInactivateMember(null)} onConfirm={() => inactivateMember && inactivate.mutate(inactivateMember)} loading={inactivate.isPending} title="Inativar vinculo" confirmLabel="Inativar" description={<>O vinculo de <b>{inactivateMember?.profile?.full_name}</b> sera encerrado, preservando historico e alocacoes.</>} />
       <ConfirmDialog open={Boolean(cancelTarget)} onClose={() => setCancelTarget(null)} onConfirm={() => cancelTarget && cancel.mutate(cancelTarget.id)} loading={cancel.isPending} title="Cancelar horas realizadas" confirmLabel="Cancelar" description="O registro deixara os totais ativos, mas permanecera no historico e na auditoria." />
+      <ConfirmDialog
+        open={Boolean(archiveTarget)} onClose={() => setArchiveTarget(null)}
+        onConfirm={() => archiveTarget && archive.mutate(archiveTarget.id)} loading={archive.isPending}
+        title="Arquivar registro legado" confirmLabel="Arquivar"
+        description={(() => {
+          const cmp = archiveTarget && legacyComparisonById.get(archiveTarget.id);
+          return (
+            <>
+              O registro deixara os totais ativos, mas permanecera no historico e na auditoria.
+              {cmp && <> O planejamento calculado pelas tarefas hoje e' de <b>{cmp.calculated_hours.toFixed(0)}h</b>, contra <b>{archiveTarget?.allocated_hours.toFixed(0)}h</b> neste registro legado.</>}
+            </>
+          );
+        })()}
+      />
     </div>
   );
 }

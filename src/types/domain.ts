@@ -323,8 +323,16 @@ export interface ResourceCapacity {
   business_unit_id: string | null; business_unit_name: string | null;
   /** Horas planejadas calculadas a partir das tarefas (v_task_planned_allocation). */
   planned_hours: number; planned_project_count: number;
-  /** allocated_hours + planned_hours - visao combinada de capacidade. */
+  /** planned_hours + horas 'realizado' (nunca 'legado', para nao contar duas vezes). */
   total_hours: number; total_allocation_pct: number;
+}
+
+/** Linha de public.v_legacy_allocation_comparison - compara um registro manual legado com o planejado calculado hoje pelas tarefas. */
+export interface LegacyAllocationComparison {
+  allocation_id: string; project_id: string; profile_id: string;
+  period_start: string; period_end: string; legacy_hours: number;
+  description: string | null; role_label: string | null;
+  calculated_hours: number; divergence_hours: number; divergence_pct: number | null;
 }
 
 export interface CriticalCalendarEvent {

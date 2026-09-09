@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   upsertAllocation: vi.fn(async () => undefined),
   cancelAllocation: vi.fn(async () => undefined),
   plannedAllocation: vi.fn(async (): Promise<import('@/types/domain').TaskPlannedAllocationRow[]> => []),
+  allocations: vi.fn(async (): Promise<import('@/services/governance').AllocationRow[]> => []),
+  legacyComparison: vi.fn(async (): Promise<import('@/types/domain').LegacyAllocationComparison[]> => []),
   capacity: vi.fn(async () => ({
     capacity_hours: 160, current_hours: 120, requested_hours: 80,
     total_hours: 200, total_pct: 125, limit_pct: 100, overloaded: true,
@@ -26,8 +28,9 @@ vi.mock('@/services/projects', () => ({
 }));
 
 vi.mock('@/services/governance', () => ({
-  listAllocations: vi.fn(async () => []),
+  listAllocations: mocks.allocations,
   listTaskPlannedAllocation: mocks.plannedAllocation,
+  listLegacyAllocationComparison: mocks.legacyComparison,
   upsertAllocation: mocks.upsertAllocation,
   cancelAllocation: mocks.cancelAllocation,
   checkAllocationCapacity: mocks.capacity,
@@ -94,5 +97,30 @@ describe('ProjectResourcesTab', () => {
     expect(screen.queryByText(/T001 · Validar cálculos IFRS 16/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Ana Ribeiro/ }));
     expect(await screen.findByText(/T001 · Validar cálculos IFRS 16/)).toBeInTheDocument();
+  });
+
+  it('mostra a comparacao legado x calculado e permite arquivar o registro legado', async () => {
+    mocks.allocations.mockResolvedValueOnce([
+      {
+        id: 'alloc-legado-1', project_id: 'project-1', profile_id: 'person-1', role_label: 'Membro',
+        period_start: '2026-09-01', period_end: '2026-11-30', allocated_hours: 260, allocation_pct: null,
+        description: null, status: 'ativa', overload_justification: null, source: 'legado',
+        profile: { full_name: 'Ana Ribeiro', area_id: null, area: null }, project: { code: 'PRJ1', name: 'Projeto 1' },
+      },
+    ]);
+    mocks.legacyComparison.mockResolvedValueOnce([
+      { allocation_id: 'alloc-legado-1', project_id: 'project-1', profile_id: 'person-1', period_start: '2026-09-01', period_end: '2026-11-30', legacy_hours: 260, description: null, role_label: 'Membro', calculated_hours: 68, divergence_hours: 192, divergence_pct: 73.85 },
+    ]);
+    renderWithProviders(<ProjectResourcesTab projectId="project-1" members={[member]} loading={false} canManage />);
+
+    await userEvent.click(await screen.findByText(/Dados legados/));
+    expect(await screen.findByText(/Calculado pelas tarefas hoje: 68h/)).toBeInTheDocument();
+    expect(screen.getByText(/divergência de \+192h \(74%\)/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Arquivar registro legado' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Arquivar registro legado' });
+    expect(dialog.textContent).toContain('68h, contra 260h neste registro legado');
+    await userEvent.click(screen.getByRole('button', { name: 'Arquivar' }));
+    await waitFor(() => expect(mocks.cancelAllocation).toHaveBeenCalledWith('alloc-legado-1'));
   });
 });

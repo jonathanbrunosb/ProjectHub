@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase/client';
 import type {
   AuditLogEntry, CalendarConflict, CriticalCalendarEvent, Decision, Indicator,
-  IndicatorMeasurement, Notification, ResourceCapacity, StatusReport, TaskPlannedAllocationRow,
+  IndicatorMeasurement, LegacyAllocationComparison, Notification, ResourceCapacity, StatusReport,
+  TaskPlannedAllocationRow,
 } from '@/types/domain';
 
 // --- Decisoes ---------------------------------------------------------------
@@ -162,6 +163,22 @@ export async function listTaskPlannedAllocation(projectId: string): Promise<Task
     .order('period_start');
   if (error) throw error;
   return (data ?? []) as unknown as TaskPlannedAllocationRow[];
+}
+
+/**
+ * Compara cada registro manual 'legado' com o planejado que as tarefas
+ * calculam hoje para o mesmo colaborador/projeto/periodo - para o PMO
+ * decidir o que arquivar (secao 22: nada e' convertido automaticamente).
+ */
+export async function listLegacyAllocationComparison(projectId?: string): Promise<LegacyAllocationComparison[]> {
+  let query = supabase
+    .from('v_legacy_allocation_comparison')
+    .select('allocation_id,project_id,profile_id,period_start,period_end,legacy_hours,description,role_label,calculated_hours,divergence_hours,divergence_pct')
+    .order('period_start', { ascending: false });
+  if (projectId) query = query.eq('project_id', projectId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as LegacyAllocationComparison[];
 }
 
 export interface CapacityCheck {
