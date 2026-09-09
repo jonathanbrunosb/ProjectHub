@@ -64,7 +64,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Instalar cliente PostgreSQL
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v psql >/dev/null 2>&1; then
+            psql --version
+            exit 0
+          fi
+
+          # Atualiza apenas os repositorios oficiais do Ubuntu. Repositorios
+          # adicionais da imagem do runner (Chrome, Microsoft etc.) nao sao
+          # necessarios para os testes e podem tornar a instalacao instavel.
+          if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+            sudo apt-get update \
+              -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+              -o Dir::Etc::sourceparts="-"
+          else
+            sudo apt-get update \
+              -o Dir::Etc::sourcelist="sources.list" \
+              -o Dir::Etc::sourceparts="-"
+          fi
+          sudo apt-get install -y postgresql-client
 
       - name: Aplicar migrations, seed e rodar os testes
         env:
