@@ -127,13 +127,13 @@ describe('progressByProject', () => {
     expect(rows.map((r) => r.code)).toEqual(['B', 'C', 'A']);
   });
 
-  it('ignora projetos concluidos e cancelados', () => {
+  it('inclui projetos concluidos e ignora projetos cancelados', () => {
     const rows = progressByProject([
       project({ code: 'A' }),
       project({ code: 'B', status: 'concluido' }),
       project({ code: 'C', status: 'cancelado' }),
     ]);
-    expect(rows.map((r) => r.code)).toEqual(['A']);
+    expect(rows.map((r) => r.code)).toEqual(['A', 'B']);
   });
 });
 

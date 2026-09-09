@@ -120,7 +120,7 @@ export interface ProgressBar {
 /** Avanco por projeto ordenado pelo maior desvio negativo - o que exige acao. */
 export function progressByProject(projects: ProjectOverview[], limit = 10): ProgressBar[] {
   return [...projects]
-    .filter((p) => p.status === 'em_andamento' || p.status === 'planejamento')
+    .filter((p) => p.status === 'em_andamento' || p.status === 'planejamento' || p.status === 'concluido')
     .sort((a, b) => (a.progress_actual - a.progress_planned) - (b.progress_actual - b.progress_planned))
     .slice(0, limit)
     .map((p) => ({
