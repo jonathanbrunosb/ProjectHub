@@ -25,8 +25,14 @@ for file in "$ROOT"/supabase/migrations/*.sql; do
   $PSQL -f "$file"
 done
 
+echo "==> Testando catalogo de templates sem depender do seed"
+$PSQL -f "$ROOT/supabase/tests/04_reference_templates.sql"
+
 echo "==> Carregando o seed demonstrativo"
 $PSQL -f "$ROOT/supabase/seed.sql"
+
+echo "==> Confirmando que o seed nao duplica o catalogo"
+$PSQL -f "$ROOT/supabase/tests/04_reference_templates.sql"
 
 echo "==> Testes de RLS"
 $PSQL -f "$ROOT/supabase/tests/01_rls_tests.sql"

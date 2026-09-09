@@ -25,6 +25,7 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `0017_goal_indicators.sql` | Indicadores de Metas: `holidays` e dias úteis (`app.is_business_day`/`app.business_days_between`, inexistentes até aqui), `project_goal_settings`, `task_goal_config`, função central `app.calc_delivery_score`, views `v_task_goal_scores`/`v_project_goal_indicator`, fechamento de período (`goal_score_periods`, `close_goal_period`/`reopen_goal_period`) |
 | `0018_attachments_entity_check.sql` | Restringe `attachments.entity` aos mesmos valores já usados por `comments` (defesa em profundidade antes da interface de upload existir) |
 | `0019_service_role_grants.sql` | Restaura os GRANTs de `service_role` no schema `public`. QA estava sem em **todas as 50 tabelas** e PRD tinha em todas — divergência que fazia qualquer Edge Function falhar com `permission denied` ao tocar tabela. Idempotente: no-op onde já existem |
+| `20260909132537_publish_reference_templates.sql` | Publica o catálogo funcional de 6 templates, 8 fases, 8 tarefas-modelo e o campo de referência do template de sistemas em QA e PRD. Somente dados, idempotente e sem alteração de schema |
 
 > A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
 > usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
@@ -39,9 +40,10 @@ migration falha. Ver [AMBIENTES.md](AMBIENTES.md).
 ## Seed
 
 `supabase/seed.sql` popula um ambiente demonstrativo completo: 8 usuários (um por perfil),
-3 empresas, 4 unidades, 4 equipes, 6 templates, 6 projetos com status, progresso, saúde,
-riscos, custos, alocações e decisões distintos, além do calendário contábil e das regras
-de automação.
+3 empresas, 4 unidades, 4 equipes e 6 projetos com status, progresso, saúde, riscos,
+custos, alocações e decisões distintos, além do calendário contábil e das regras de
+automação. Os 6 templates usados por esses projetos são dados funcionais de referência e
+vêm da migration `20260909132537_publish_reference_templates.sql`, inclusive em PRD.
 
 ```bash
 supabase db reset                 # migrations + seed

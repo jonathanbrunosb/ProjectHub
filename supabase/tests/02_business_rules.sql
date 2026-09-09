@@ -327,8 +327,37 @@ select pg_temp.assert(
    order by id desc limit 1),
   'a trilha registra quais campos mudaram');
 
+-- =============================================================================
+-- 9. CADASTRO INICIAL VINCULADO AO TEMPLATE
+-- =============================================================================
+set role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"11111111-1111-4111-8111-000000000002","role":"authenticated"}',
+  false
+);
+
+select public.create_project_from_template(
+  p_template_id => (select id from public.project_templates where code = 'TPL-REG'),
+  p_code => 'TEST-TEMPLATE-LINK',
+  p_name => 'Projeto temporario criado por template',
+  p_start_date => current_date,
+  p_target_date => current_date + 120
+) as linked_project_id \gset
+
+reset role;
+
+select pg_temp.assert(
+  (select count(*) from public.project_phases where project_id = :'linked_project_id') = 4,
+  'cadastro inicial instancia as quatro fases do template vinculado');
+
+select pg_temp.assert(
+  (select count(*) from public.tasks where project_id = :'linked_project_id') = 8,
+  'cadastro inicial instancia as oito tarefas do template vinculado');
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
+delete from public.projects where id = :'linked_project_id';
 delete from public.custom_field_definitions where id = '99999999-9999-4999-8999-000000000020';
 delete from public.critical_calendar_events where name = 'Janela de teste';
 

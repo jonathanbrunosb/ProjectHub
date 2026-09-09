@@ -143,6 +143,9 @@ ERROR: Seeds de teste sao proibidos em Producao (app_environment = PRD).
 
 A guarda é programática, não uma convenção de operação. Todo o dado fictício —
 incluindo `admin@pmocontabil.dev` — pertence a QA e não é replicado para PRD.
+O catálogo funcional de templates é a exceção deliberada: ele é dado de referência,
+versionado pela migration `20260909132537_publish_reference_templates.sql`, e existe nos
+dois ambientes para permitir o vínculo no cadastro de projetos e campos personalizados.
 
 ## Variáveis de ambiente
 

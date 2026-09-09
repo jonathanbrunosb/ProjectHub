@@ -124,46 +124,6 @@ insert into public.portfolios (id, code, name, description, owner_id) values
 on conflict (code) do nothing;
 
 -- -----------------------------------------------------------------------------
--- Templates
--- -----------------------------------------------------------------------------
-insert into public.project_templates (id, code, name, category, description, evm_enabled) values
-  ('26262626-2626-4626-8626-000000000001','TPL-REG','Projeto Regulatorio / Normas','Regulatorio','Adocao de normas contabeis e requisitos regulatorios', false),
-  ('26262626-2626-4626-8626-000000000002','TPL-TRIB','Reforma Tributaria','Regulatorio','Adequacao a reforma tributaria (IBS/CBS)', false),
-  ('26262626-2626-4626-8626-000000000003','TPL-SIS','Implementacao de Sistema','Sistemas','Implantacao ou migracao de sistemas corporativos', true),
-  ('26262626-2626-4626-8626-000000000004','TPL-INO','Inovacao / IA / PoC','Inovacao','Provas de conceito e iniciativas de inovacao', false),
-  ('26262626-2626-4626-8626-000000000005','TPL-MEL','Melhoria de Processos','Melhoria Continua','Otimizacao de processos contabeis e de fechamento', false),
-  ('26262626-2626-4626-8626-000000000006','TPL-COM','Controles / Compliance','Compliance','Estruturacao e teste de controles internos', false)
-on conflict (code) do nothing;
-
-insert into public.template_phases (template_id, name, position, weight) values
-  ('26262626-2626-4626-8626-000000000001','Diagnostico', 1, 1),
-  ('26262626-2626-4626-8626-000000000001','Analise de Impactos', 2, 2),
-  ('26262626-2626-4626-8626-000000000001','Adequacao', 3, 3),
-  ('26262626-2626-4626-8626-000000000001','Divulgacao e Encerramento', 4, 1),
-  ('26262626-2626-4626-8626-000000000003','Planejamento', 1, 1),
-  ('26262626-2626-4626-8626-000000000003','Blueprint', 2, 2),
-  ('26262626-2626-4626-8626-000000000003','Realizacao', 3, 3),
-  ('26262626-2626-4626-8626-000000000003','Testes e Go-live', 4, 2)
-on conflict do nothing;
-
-insert into public.template_tasks (template_id, template_phase_id, title, position, weight, offset_start_days, duration_days, is_milestone)
-select t.id, ph.id, x.title, x.position, x.weight, x.offset_start, x.duration, x.milestone
-  from public.project_templates t
-  cross join (values
-    ('Diagnostico','Mapear requisitos da norma', 1, 2, 0, 15, false),
-    ('Diagnostico','Levantar base de dados atual', 2, 1, 5, 15, false),
-    ('Analise de Impactos','Quantificar impactos contabeis', 3, 3, 20, 25, false),
-    ('Analise de Impactos','Validar impactos com Auditoria', 4, 2, 40, 10, true),
-    ('Adequacao','Ajustar plano de contas e parametrizacoes', 5, 3, 50, 30, false),
-    ('Adequacao','Adequar politicas contabeis', 6, 2, 55, 20, false),
-    ('Divulgacao e Encerramento','Elaborar notas explicativas', 7, 2, 85, 20, false),
-    ('Divulgacao e Encerramento','Aprovacao final do Comite', 8, 1, 105, 5, true)
-  ) as x(phase, title, position, weight, offset_start, duration, milestone)
-  join public.template_phases ph on ph.template_id = t.id and ph.name = x.phase
- where t.code = 'TPL-REG'
-on conflict do nothing;
-
--- -----------------------------------------------------------------------------
 -- Campos personalizados (escopo global e por template)
 -- -----------------------------------------------------------------------------
 insert into public.custom_field_definitions (id, scope, entity, key, label, description, field_type, required, position) values
@@ -176,10 +136,6 @@ insert into public.custom_field_options (definition_id, value, label, color, pos
   ('27272727-2727-4727-8727-000000000002','alto','Alto','danger',1),
   ('27272727-2727-4727-8727-000000000002','medio','Medio','warn',2),
   ('27272727-2727-4727-8727-000000000002','baixo','Baixo','ok',3)
-on conflict do nothing;
-
-insert into public.custom_field_definitions (id, scope, template_id, entity, key, label, field_type, position) values
-  ('27272727-2727-4727-8727-000000000004','template','26262626-2626-4626-8626-000000000003','project','ambiente_sap','Ambiente SAP','texto', 1)
 on conflict do nothing;
 
 -- -----------------------------------------------------------------------------
