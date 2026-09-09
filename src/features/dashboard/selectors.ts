@@ -189,8 +189,13 @@ export interface AreaCapacity {
  * Capacidade por Area no mes de referencia: soma capacidade e horas alocadas
  * de todos os colaboradores da area, so' depois divide. Nunca faz media dos
  * percentuais individuais: utilizacao = soma(alocado) / soma(capacidade) x 100.
+ *
+ * `metric` escolhe a fonte das horas: 'allocated' (padrao, retrocompativel -
+ * apontamento manual/legado) ou 'total' (planejado calculado pelas tarefas +
+ * realizado). Dashboard e Relatorios continuam usando o padrao sem alteracao
+ * de comportamento; so' Recursos & Capacidade passa 'total' explicitamente.
  */
-export function areaCapacity(rows: ResourceCapacity[], referenceMonth: string): AreaCapacity[] {
+export function areaCapacity(rows: ResourceCapacity[], referenceMonth: string, metric: 'allocated' | 'total' = 'allocated'): AreaCapacity[] {
   const map = new Map<string, {
     areaId: string | null; area: string; businessUnit: string | null;
     capacity: number; allocated: number; collaborators: Set<string>; overloaded: number;
@@ -202,10 +207,12 @@ export function areaCapacity(rows: ResourceCapacity[], referenceMonth: string): 
       areaId: r.area_id, area: r.area_name ?? 'Sem area definida', businessUnit: r.business_unit_name,
       capacity: 0, allocated: 0, collaborators: new Set<string>(), overloaded: 0,
     };
+    const hours = metric === 'total' ? Number(r.total_hours) : Number(r.allocated_hours);
+    const pctForRow = metric === 'total' ? Number(r.total_allocation_pct) : Number(r.allocation_pct);
     acc.capacity += Number(r.capacity_hours);
-    acc.allocated += Number(r.allocated_hours);
+    acc.allocated += hours;
     acc.collaborators.add(r.profile_id);
-    if (Number(r.allocation_pct) > 100) acc.overloaded += 1;
+    if (pctForRow > 100) acc.overloaded += 1;
     map.set(key, acc);
   }
   return [...map.values()]

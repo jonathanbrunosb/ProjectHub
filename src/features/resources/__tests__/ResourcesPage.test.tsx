@@ -14,10 +14,11 @@ vi.mock('@/components/layout/AppShell', () => ({ useBreadcrumbs: vi.fn() }));
 
 const month = currentMonthKey();
 
+/** planned_hours=0 mantem total_hours/total_allocation_pct iguais a allocated_hours/allocation_pct - os testes existentes validam a agregacao com base nesses valores. */
 const capacity = [
-  { profile_id: 'p1', full_name: 'Ana Ribeiro', reference_month: month, capacity_hours: 100, allocated_hours: 120, allocation_pct: 120, project_count: 2, area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa' },
-  { profile_id: 'p2', full_name: 'Carlos Menezes', reference_month: month, capacity_hours: 100, allocated_hours: 60, allocation_pct: 60, project_count: 1, area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa' },
-  { profile_id: 'p3', full_name: 'Helena Duarte', reference_month: month, capacity_hours: 100, allocated_hours: 50, allocation_pct: 50, project_count: 1, area_id: 'a2', area_name: 'Fiscal e Tributario', business_unit_id: 'bu2', business_unit_name: 'Fiscal Corporativo' },
+  { profile_id: 'p1', full_name: 'Ana Ribeiro', reference_month: month, capacity_hours: 100, allocated_hours: 120, allocation_pct: 120, project_count: 2, area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa', planned_hours: 0, planned_project_count: 0, total_hours: 120, total_allocation_pct: 120 },
+  { profile_id: 'p2', full_name: 'Carlos Menezes', reference_month: month, capacity_hours: 100, allocated_hours: 60, allocation_pct: 60, project_count: 1, area_id: 'a1', area_name: 'Contabilidade Geral', business_unit_id: 'bu1', business_unit_name: 'Contabilidade Corporativa', planned_hours: 0, planned_project_count: 0, total_hours: 60, total_allocation_pct: 60 },
+  { profile_id: 'p3', full_name: 'Helena Duarte', reference_month: month, capacity_hours: 100, allocated_hours: 50, allocation_pct: 50, project_count: 1, area_id: 'a2', area_name: 'Fiscal e Tributario', business_unit_id: 'bu2', business_unit_name: 'Fiscal Corporativo', planned_hours: 0, planned_project_count: 0, total_hours: 50, total_allocation_pct: 50 },
 ];
 
 const allocations = [
@@ -116,6 +117,23 @@ describe('Recursos & Capacidade - tab Por area', () => {
     const table = await screen.findByRole('table');
     expect(within(table).getByText('Contabilidade Geral')).toBeInTheDocument();
     expect(within(table).queryByText('Fiscal e Tributario')).toBeNull();
+  });
+
+  it('a agregacao por area soma planejado (tarefas) + realizado (apontamento manual)', async () => {
+    capacity[1].planned_hours = 40;
+    capacity[1].total_hours = 100;
+    capacity[1].total_allocation_pct = 100;
+    try {
+      render();
+      await userEvent.click(screen.getByRole('tab', { name: 'Por area' }));
+      const linha = await rowInTable('Contabilidade Geral');
+      // Ana (120h realizado) + Carlos (60h realizado + 40h planejado = 100h total) = 220h / 200h capacidade = 110%.
+      expect(within(linha).getByText('110%')).toBeInTheDocument();
+    } finally {
+      capacity[1].planned_hours = 0;
+      capacity[1].total_hours = 60;
+      capacity[1].total_allocation_pct = 60;
+    }
   });
 
   it('drill-down mostra os colaboradores da area e as alocacoes por projeto que compoem a utilizacao', async () => {

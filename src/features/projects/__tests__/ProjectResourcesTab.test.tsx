@@ -87,7 +87,7 @@ describe('ProjectResourcesTab', () => {
 
   it('mostra a alocacao planejada calculada pelas tarefas com drill-down', async () => {
     mocks.plannedAllocation.mockResolvedValueOnce([
-      { task_id: 'task-1', project_id: 'project-1', code: 'T001', title: 'Validar cálculos IFRS 16', status: 'em_andamento', profile_id: 'person-1', responsible_count: 1, planned_hours: 40, period_start: '2026-10-01', period_end: '2026-10-10', business_days: 8 },
+      { task_id: 'task-1', project_id: 'project-1', code: 'T001', title: 'Validar cálculos IFRS 16', status: 'em_andamento', profile_id: 'person-1', responsible_count: 1, uses_custom_percent: false, allocation_percent: 100, planned_hours: 40, baseline_planned_hours: 40, period_start: '2026-10-01', period_end: '2026-10-10', business_days: 8 },
     ]);
     renderWithProviders(<ProjectResourcesTab projectId="project-1" members={[member]} loading={false} canManage />);
     expect(await screen.findByText('40 h planejadas')).toBeInTheDocument();
