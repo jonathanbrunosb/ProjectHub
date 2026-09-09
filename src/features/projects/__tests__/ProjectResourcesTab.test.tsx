@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   updateMember: vi.fn(async () => undefined),
   upsertAllocation: vi.fn(async () => undefined),
   cancelAllocation: vi.fn(async () => undefined),
+  plannedAllocation: vi.fn(async (): Promise<import('@/types/domain').TaskPlannedAllocationRow[]> => []),
   capacity: vi.fn(async () => ({
     capacity_hours: 160, current_hours: 120, requested_hours: 80,
     total_hours: 200, total_pct: 125, limit_pct: 100, overloaded: true,
@@ -26,6 +27,7 @@ vi.mock('@/services/projects', () => ({
 
 vi.mock('@/services/governance', () => ({
   listAllocations: vi.fn(async () => []),
+  listTaskPlannedAllocation: mocks.plannedAllocation,
   upsertAllocation: mocks.upsertAllocation,
   cancelAllocation: mocks.cancelAllocation,
   checkAllocationCapacity: mocks.capacity,
@@ -51,7 +53,7 @@ describe('ProjectResourcesTab', () => {
     expect(screen.getByText(/Adicione colaboradores para definir responsabilidades/i)).toBeInTheDocument();
     rerender(<ProjectResourcesTab projectId="project-1" members={[]} loading={false} canManage />);
     expect(screen.getByRole('button', { name: /Adicionar membro/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Registrar alocacao/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Registrar horas realizadas/i })).toBeDisabled();
   });
 
   it('busca colaborador existente por matricula e cria o vinculo sem alocacao', async () => {
@@ -69,7 +71,7 @@ describe('ProjectResourcesTab', () => {
 
   it('identifica sobrecarga e exige justificativa antes de salvar', async () => {
     renderWithProviders(<ProjectResourcesTab projectId="project-1" members={[member]} loading={false} canManage />);
-    await userEvent.click(screen.getByRole('button', { name: /Registrar alocacao/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Registrar horas realizadas/i }));
     await userEvent.clear(screen.getByLabelText('Horas previstas'));
     await userEvent.type(screen.getByLabelText('Horas previstas'), '80');
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
@@ -81,5 +83,16 @@ describe('ProjectResourcesTab', () => {
       project_id: 'project-1', profile_id: 'person-1', allocated_hours: 80,
       overload_justification: 'Aprovada pelo gestor responsavel',
     })));
+  });
+
+  it('mostra a alocacao planejada calculada pelas tarefas com drill-down', async () => {
+    mocks.plannedAllocation.mockResolvedValueOnce([
+      { task_id: 'task-1', project_id: 'project-1', code: 'T001', title: 'Validar cálculos IFRS 16', status: 'em_andamento', profile_id: 'person-1', responsible_count: 1, planned_hours: 40, period_start: '2026-10-01', period_end: '2026-10-10', business_days: 8 },
+    ]);
+    renderWithProviders(<ProjectResourcesTab projectId="project-1" members={[member]} loading={false} canManage />);
+    expect(await screen.findByText('40 h planejadas')).toBeInTheDocument();
+    expect(screen.queryByText(/T001 · Validar cálculos IFRS 16/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Ana Ribeiro/ }));
+    expect(await screen.findByText(/T001 · Validar cálculos IFRS 16/)).toBeInTheDocument();
   });
 });

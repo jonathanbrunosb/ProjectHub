@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus, Pencil, Plus, UserMinus, Users } from 'lucide-react';
+import { CalendarPlus, ChevronDown, ChevronRight, Pencil, Plus, UserMinus, Users } from 'lucide-react';
 import { AvatarWithName } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,9 +15,10 @@ import {
   type ProjectMemberRow,
 } from '@/services/projects';
 import {
-  cancelAllocation, checkAllocationCapacity, listAllocations, upsertAllocation,
+  cancelAllocation, checkAllocationCapacity, listAllocations, listTaskPlannedAllocation, upsertAllocation,
   type AllocationRow, type CapacityCheck,
 } from '@/services/governance';
+import type { TaskPlannedAllocationRow } from '@/types/domain';
 import { formatDate } from '@/utils/format';
 
 interface Props {
@@ -44,8 +45,10 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
   const toast = useToast();
   const queryClient = useQueryClient();
   const allocations = useQuery({ queryKey: ['allocations', projectId], queryFn: () => listAllocations(projectId) });
+  const planned = useQuery({ queryKey: ['task-planned-allocation', projectId], queryFn: () => listTaskPlannedAllocation(projectId) });
   const candidates = useQuery({ queryKey: ['project-member-candidates'], queryFn: listProjectMemberCandidates, enabled: canManage });
   const [areaFilter, setAreaFilter] = useState('');
+  const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
   const [memberOpen, setMemberOpen] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [memberForm, setMemberForm] = useState(blankMember);
@@ -59,11 +62,23 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
 
   const activeMembers = useMemo(() => members.filter((m) => m.status === 'ativo' && m.profile?.active), [members]);
   const activeAllocations = useMemo(() => (allocations.data ?? []).filter((a) => a.status === 'ativa'), [allocations.data]);
+  const realizedAllocations = useMemo(() => activeAllocations.filter((a) => a.source === 'realizado'), [activeAllocations]);
+  const legacyAllocations = useMemo(() => activeAllocations.filter((a) => a.source === 'legado'), [activeAllocations]);
   const totals = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of activeAllocations) map.set(a.profile_id, (map.get(a.profile_id) ?? 0) + Number(a.allocated_hours));
     return map;
   }, [activeAllocations]);
+  const plannedByProfile = useMemo(() => {
+    const map = new Map<string, { total: number; tasks: TaskPlannedAllocationRow[] }>();
+    for (const row of planned.data ?? []) {
+      const entry = map.get(row.profile_id) ?? { total: 0, tasks: [] };
+      entry.total += Number(row.planned_hours);
+      entry.tasks.push(row);
+      map.set(row.profile_id, entry);
+    }
+    return map;
+  }, [planned.data]);
   const activeIds = useMemo(() => new Set(activeMembers.map((m) => m.profile_id)), [activeMembers]);
   const visibleCandidates = useMemo(() => {
     const term = candidateSearch.trim().toLocaleLowerCase('pt-BR');
@@ -82,11 +97,16 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
   }, [members]);
   const filteredMembers = areaFilter ? members.filter((m) => m.profile?.area?.name === areaFilter) : members;
   const filteredAllocations = areaFilter
-    ? activeAllocations.filter((a) => a.profile?.area?.name === areaFilter) : activeAllocations;
+    ? realizedAllocations.filter((a) => a.profile?.area?.name === areaFilter) : realizedAllocations;
+  const filteredLegacyAllocations = areaFilter
+    ? legacyAllocations.filter((a) => a.profile?.area?.name === areaFilter) : legacyAllocations;
+  const plannedRows = (areaFilter ? members.filter((m) => m.profile?.area?.name === areaFilter) : members)
+    .filter((m) => plannedByProfile.has(m.profile_id));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['members', projectId] });
     queryClient.invalidateQueries({ queryKey: ['allocations'] });
+    queryClient.invalidateQueries({ queryKey: ['task-planned-allocation'] });
     queryClient.invalidateQueries({ queryKey: ['resource-capacity'] });
   };
 
@@ -155,14 +175,14 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
     },
     onSuccess: () => {
       invalidate(); setAllocationOpen(false); setEditingAllocation(null); setCapacity(null); setAllocationForm(blankAllocation);
-      toast.success(editingAllocation ? 'Alocacao atualizada' : 'Alocacao registrada');
+      toast.success(editingAllocation ? 'Horas realizadas atualizadas' : 'Horas realizadas registradas');
     },
-    onError: (error) => toast.error('Nao foi possivel salvar a alocacao', describeError(error)),
+    onError: (error) => toast.error('Nao foi possivel salvar as horas realizadas', describeError(error)),
   });
 
   const cancel = useMutation({
     mutationFn: (id: string) => cancelAllocation(id),
-    onSuccess: () => { invalidate(); setCancelTarget(null); toast.success('Alocacao cancelada', 'O registro foi preservado na trilha de auditoria.'); },
+    onSuccess: () => { invalidate(); setCancelTarget(null); toast.success('Registro cancelado', 'O registro foi preservado na trilha de auditoria.'); },
     onError: (error) => toast.error('Nao foi possivel cancelar', describeError(error)),
   });
 
@@ -219,7 +239,8 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-muted">
                     <Badge tone="neutral">{member.role_label ?? 'Membro'}</Badge>
                     <span>{formatDate(member.start_date)} a {member.end_date ? formatDate(member.end_date) : 'sem termino'}</span>
-                    <span>· {Number(totals.get(member.profile_id) ?? 0).toFixed(0)} h no projeto</span>
+                    <span>· {(plannedByProfile.get(member.profile_id)?.total ?? 0).toFixed(0)} h planejadas</span>
+                    <span>· {Number(totals.get(member.profile_id) ?? 0).toFixed(0)} h apontadas</span>
                   </div>
                   <p className="mt-1 text-xs text-muted">{member.profile?.area?.business_unit?.name ?? 'Gerencia nao informada'} · {member.profile?.job_title ?? 'Cargo nao informado'}</p>
                 </li>
@@ -229,24 +250,78 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
         </section>
 
         <section className="card overflow-hidden">
+          <header className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold">Planejado</h2>
+            <p className="text-xs text-muted">Planejamento de capacidade gerado automaticamente a partir das tarefas do projeto. As horas planejadas sao calculadas com base no esforco estimado, periodo e responsaveis definidos nas tarefas.</p>
+          </header>
+          {planned.isLoading ? <div className="p-4"><Spinner /></div> : plannedRows.length === 0 ? (
+            <div className="p-4"><EmptyState title="Nenhuma hora planejada" description="Defina horas estimadas, periodo e responsavel nas tarefas para que a alocacao seja calculada." /></div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {plannedRows.map((member) => {
+                const entry = plannedByProfile.get(member.profile_id)!;
+                const expanded = expandedProfile === member.profile_id;
+                return (
+                  <li key={member.profile_id} className="p-3">
+                    <button type="button" className="flex w-full items-start justify-between gap-2 text-left" onClick={() => setExpandedProfile(expanded ? null : member.profile_id)}>
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                        {member.profile?.full_name ?? '—'}
+                      </span>
+                      <b className="whitespace-nowrap text-sm tabular-nums">{entry.total.toFixed(0)} h planejadas</b>
+                    </button>
+                    {expanded && (
+                      <ul className="mt-2 space-y-1 pl-5 text-xs text-muted">
+                        {entry.tasks.map((task) => (
+                          <li key={task.task_id} className="flex items-center justify-between gap-2">
+                            <span>{task.code} · {task.title}</span>
+                            <span className="tabular-nums">{Number(task.planned_hours).toFixed(1)} h · {formatDate(task.period_start)} a {formatDate(task.period_end)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="card overflow-hidden">
           <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Alocacao</h2>
-            {canManage && <Button size="sm" disabled={activeMembers.length === 0} title={activeMembers.length ? undefined : 'Adicione um membro ativo antes de registrar a alocacao.'} onClick={() => { setEditingAllocation(null); setCapacity(null); setAllocationForm({ ...blankAllocation, profile_id: activeMembers[0]?.profile_id ?? '' }); setAllocationOpen(true); }} icon={<CalendarPlus className="h-3.5 w-3.5" />}>Registrar alocacao</Button>}
+            <h2 className="text-sm font-semibold">Horas realizadas</h2>
+            {canManage && <Button size="sm" disabled={activeMembers.length === 0} title={activeMembers.length ? undefined : 'Adicione um membro ativo antes de registrar horas realizadas.'} onClick={() => { setEditingAllocation(null); setCapacity(null); setAllocationForm({ ...blankAllocation, profile_id: activeMembers[0]?.profile_id ?? '' }); setAllocationOpen(true); }} icon={<CalendarPlus className="h-3.5 w-3.5" />}>Registrar horas realizadas</Button>}
           </header>
           {filteredAllocations.length === 0 ? (
-            <div className="p-4"><EmptyState title="Nenhuma alocacao registrada" description="Registre horas por periodo para acompanhar capacidade e sobrecarga." /></div>
+            <div className="p-4"><EmptyState title="Nenhuma hora realizada registrada" description="Registre o esforco efetivamente executado para comparar com o planejado." /></div>
           ) : (
             <ul className="divide-y divide-border">
               {filteredAllocations.map((allocation) => (
                 <li key={allocation.id} className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div><p className="text-sm font-medium">{allocation.profile?.full_name ?? '—'}</p><p className="text-xs text-muted">{allocation.description || allocation.role_label || 'Sem descricao'}</p></div>
-                    <div className="flex items-center gap-1"><b className="mr-1 whitespace-nowrap text-sm tabular-nums">{Number(allocation.allocated_hours).toFixed(0)} h</b>{canManage && <Button size="icon" variant="ghost" aria-label="Editar alocacao" onClick={() => openAllocationEdit(allocation)}><Pencil className="h-3.5 w-3.5" /></Button>}{canManage && <Button size="icon" variant="ghost" aria-label="Cancelar alocacao" onClick={() => setCancelTarget(allocation)}><UserMinus className="h-3.5 w-3.5" /></Button>}</div>
+                    <div className="flex items-center gap-1"><b className="mr-1 whitespace-nowrap text-sm tabular-nums">{Number(allocation.allocated_hours).toFixed(0)} h</b>{canManage && <Button size="icon" variant="ghost" aria-label="Editar horas realizadas" onClick={() => openAllocationEdit(allocation)}><Pencil className="h-3.5 w-3.5" /></Button>}{canManage && <Button size="icon" variant="ghost" aria-label="Cancelar horas realizadas" onClick={() => setCancelTarget(allocation)}><UserMinus className="h-3.5 w-3.5" /></Button>}</div>
                   </div>
                   <p className="mt-1 text-xs text-muted">{formatDate(allocation.period_start)} a {formatDate(allocation.period_end)}{allocation.allocation_pct != null && <> · {Number(allocation.allocation_pct).toFixed(1)}%</>}</p>
                 </li>
               ))}
             </ul>
+          )}
+          {filteredLegacyAllocations.length > 0 && (
+            <details className="border-t border-border px-4 py-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted">Dados legados (cadastro manual anterior a automacao) · {filteredLegacyAllocations.length}</summary>
+              <ul className="mt-2 divide-y divide-border">
+                {filteredLegacyAllocations.map((allocation) => (
+                  <li key={allocation.id} className="py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div><p className="text-sm font-medium">{allocation.profile?.full_name ?? '—'}</p><p className="text-xs text-muted">{allocation.description || allocation.role_label || 'Sem descricao'}</p></div>
+                      <b className="whitespace-nowrap text-sm tabular-nums">{Number(allocation.allocated_hours).toFixed(0)} h</b>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">{formatDate(allocation.period_start)} a {formatDate(allocation.period_end)}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </section>
       </div>
@@ -264,7 +339,7 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
         </div>
       </Modal>
 
-      <Modal open={allocationOpen} onClose={() => setAllocationOpen(false)} title={editingAllocation ? 'Editar alocacao' : 'Registrar alocacao'} footer={<><Button variant="secondary" onClick={() => setAllocationOpen(false)}>Cancelar</Button><Button loading={saveAllocation.isPending} onClick={() => saveAllocation.mutate()}>Salvar</Button></>}>
+      <Modal open={allocationOpen} onClose={() => setAllocationOpen(false)} title={editingAllocation ? 'Editar horas realizadas' : 'Registrar horas realizadas'} description="Horas efetivamente executadas - o planejado e' calculado automaticamente a partir das tarefas e nao e' editado aqui." footer={<><Button variant="secondary" onClick={() => setAllocationOpen(false)}>Cancelar</Button><Button loading={saveAllocation.isPending} onClick={() => saveAllocation.mutate()}>Salvar</Button></>}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Membro do projeto" required className="sm:col-span-2"><Select value={allocationForm.profile_id} onChange={(e) => { setCapacity(null); setAllocationForm((form) => ({ ...form, profile_id: e.target.value })); }}>{activeMembers.map((member) => <option key={member.profile_id} value={member.profile_id}>{member.profile?.full_name} · {member.role_label || 'Membro'}</option>)}</Select></Field>
           <Field label="Inicio" required><Input type="date" value={allocationForm.period_start} onChange={(e) => { setCapacity(null); setAllocationForm((form) => ({ ...form, period_start: e.target.value })); }} /></Field>
@@ -278,7 +353,7 @@ export function ProjectResourcesTab({ projectId, members, loading, canManage }: 
       </Modal>
 
       <ConfirmDialog open={Boolean(inactivateMember)} onClose={() => setInactivateMember(null)} onConfirm={() => inactivateMember && inactivate.mutate(inactivateMember)} loading={inactivate.isPending} title="Inativar vinculo" confirmLabel="Inativar" description={<>O vinculo de <b>{inactivateMember?.profile?.full_name}</b> sera encerrado, preservando historico e alocacoes.</>} />
-      <ConfirmDialog open={Boolean(cancelTarget)} onClose={() => setCancelTarget(null)} onConfirm={() => cancelTarget && cancel.mutate(cancelTarget.id)} loading={cancel.isPending} title="Cancelar alocacao" confirmLabel="Cancelar alocacao" description="A alocacao deixara os totais ativos, mas permanecera no historico e na auditoria." />
+      <ConfirmDialog open={Boolean(cancelTarget)} onClose={() => setCancelTarget(null)} onConfirm={() => cancelTarget && cancel.mutate(cancelTarget.id)} loading={cancel.isPending} title="Cancelar horas realizadas" confirmLabel="Cancelar" description="O registro deixara os totais ativos, mas permanecera no historico e na auditoria." />
     </div>
   );
 }
