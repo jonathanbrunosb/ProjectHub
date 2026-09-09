@@ -223,6 +223,13 @@ export interface Task {
   position: number;
 }
 
+/** Linha de public.v_task_planned_allocation - alocacao planejada calculada a partir das tarefas. */
+export interface TaskPlannedAllocationRow {
+  task_id: string; project_id: string; code: string; title: string; status: TaskStatus;
+  profile_id: string; responsible_count: number; planned_hours: number;
+  period_start: string; period_end: string; business_days: number;
+}
+
 export interface Milestone {
   id: string; project_id: string; task_id: string | null; name: string;
   description: string | null; due_date: string; baseline_date: string | null;

@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase/client';
 import type {
   AuditLogEntry, CalendarConflict, CriticalCalendarEvent, Decision, Indicator,
-  IndicatorMeasurement, Notification, ResourceCapacity, StatusReport,
+  IndicatorMeasurement, Notification, ResourceCapacity, StatusReport, TaskPlannedAllocationRow,
 } from '@/types/domain';
 
 // --- Decisoes ---------------------------------------------------------------
@@ -120,6 +120,8 @@ export interface AllocationRow {
   allocated_hours: number; allocation_pct: number | null;
   description: string | null; status: 'ativa' | 'cancelada';
   overload_justification: string | null;
+  /** 'legado' = cadastro manual anterior ao calculo automatico; 'realizado' = apontamento de horas executadas. */
+  source: 'legado' | 'realizado';
   profile: { full_name: string; area_id: string | null; area: { name: string } | null } | null;
   project: { code: string; name: string } | null;
 }
@@ -127,7 +129,7 @@ export interface AllocationRow {
 export async function listAllocations(projectId?: string): Promise<AllocationRow[]> {
   let query = supabase
     .from('resource_allocations')
-    .select('id,project_id,profile_id,role_label,period_start,period_end,allocated_hours,allocation_pct,description,status,overload_justification,profile:profiles(full_name,area_id,area:areas!profiles_area_id_fkey(name)),project:projects(code,name)')
+    .select('id,project_id,profile_id,role_label,period_start,period_end,allocated_hours,allocation_pct,description,status,overload_justification,source,profile:profiles(full_name,area_id,area:areas!profiles_area_id_fkey(name)),project:projects(code,name)')
     .eq('status', 'ativa')
     .order('period_start', { ascending: false });
   if (projectId) query = query.eq('project_id', projectId);
@@ -136,12 +138,30 @@ export async function listAllocations(projectId?: string): Promise<AllocationRow
   return (data ?? []) as unknown as AllocationRow[];
 }
 
+/**
+ * `upsertAllocation` so' cadastra HORAS REALIZADAS (apontamento manual) - a
+ * alocacao planejada vem de `listTaskPlannedAllocation`, calculada a partir das
+ * tarefas. Uma nova linha e' sempre marcada `source: 'realizado'`; a edicao de
+ * uma linha existente preserva o `source` original (nao reclassifica um
+ * registro legado so' porque foi editado).
+ */
 export async function upsertAllocation(input: Partial<AllocationRow> & { project_id: string; profile_id: string; period_start: string; period_end: string }): Promise<void> {
-  const { profile: _p, project: _pr, ...payload } = input;
-  const { error } = payload.id
-    ? await supabase.from('resource_allocations').update(payload).eq('id', payload.id)
-    : await supabase.from('resource_allocations').insert(payload);
+  const { profile: _p, project: _pr, id, ...payload } = input;
+  const { error } = id
+    ? await supabase.from('resource_allocations').update(payload).eq('id', id)
+    : await supabase.from('resource_allocations').insert({ ...payload, source: 'realizado' });
   if (error) throw error;
+}
+
+/** Alocacao planejada calculada a partir de tasks.estimated_hours/assignee_id/task_corresponsibles. */
+export async function listTaskPlannedAllocation(projectId: string): Promise<TaskPlannedAllocationRow[]> {
+  const { data, error } = await supabase
+    .from('v_task_planned_allocation')
+    .select('task_id,project_id,code,title,status,profile_id,responsible_count,planned_hours,period_start,period_end,business_days')
+    .eq('project_id', projectId)
+    .order('period_start');
+  if (error) throw error;
+  return (data ?? []) as unknown as TaskPlannedAllocationRow[];
 }
 
 export interface CapacityCheck {
