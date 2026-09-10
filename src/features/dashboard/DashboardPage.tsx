@@ -205,7 +205,7 @@ export function DashboardPage() {
       </div>
 
       {/* Graficos */}
-      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <ChartCard title="Saude do portfolio" description="Distribuicao por status de saude" loading={loading} empty={health.length === 0}>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
@@ -243,7 +243,7 @@ export function DashboardPage() {
       </div>
 
       {(loading || anyFinancial) && (
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <ChartCard
             title="Evolucao financeira do portfolio"
             description="Planejado x realizado x forecast por competencia"
@@ -286,7 +286,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <ChartCard title="Projetos por categoria" loading={loading} empty={byCategory.length === 0} height={220}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={byCategory} layout="vertical" margin={{ left: 4, right: 16 }}>

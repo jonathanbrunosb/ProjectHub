@@ -173,7 +173,7 @@ export function AuditPage() {
       >
         {detail && (
           <div className="space-y-4 text-sm">
-            <dl className="grid grid-cols-2 gap-3">
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Info label="Data/hora (UTC)" value={formatDateTime(detail.occurred_at)} />
               <Info label="Usuario" value={detail.user_name ?? 'Sistema'} />
               <Info label="E-mail" value={detail.user_email ?? '—'} />

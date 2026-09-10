@@ -125,7 +125,7 @@ export function ForgotPasswordPage() {
         </p>
       </div>
 
-      <div className="flex items-center justify-center px-6 py-10 sm:py-12">
+      <div className="flex min-w-0 items-center justify-center px-6 py-10 sm:py-12">
         <div className="w-full" style={{ maxWidth: 'min(100%, 480px)' }}>
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />

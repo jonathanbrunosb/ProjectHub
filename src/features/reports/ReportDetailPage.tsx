@@ -336,7 +336,7 @@ export function ReportDetailPage() {
     return (
       <>
         {header()}
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <KpiCard label="Tarefas vencidas" value={overdueTasks.length} tone="danger" />
           <KpiCard label="Marcos vencidos" value={overdueMilestones.length} tone="danger" />
           <KpiCard label="Acoes vencidas" value={overdueActions.length} tone="warn" />
