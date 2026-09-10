@@ -309,8 +309,8 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 text-sm">
-                <span>{assignees.find((a) => a.id === form.assignee_id)?.name ?? 'Sem responsavel principal'}</span>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-sm">
+                <span className="min-w-0 truncate">{assignees.find((a) => a.id === form.assignee_id)?.name ?? 'Sem responsavel principal'}</span>
                 {responsibleRows.length > 0 ? (
                   <Input
                     aria-label="Participacao do responsavel principal (%)" type="number" min="0" max="100" step="0.1" className="w-20"
@@ -322,6 +322,7 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
                   <div key={`${row.profile_id}-${index}`} className="contents">
                     <Select
                       aria-label="Co-responsavel"
+                      className="min-w-0"
                       value={row.profile_id}
                       onChange={(e) => setResponsibleRows((rows) => rows.map((r, i) => (i === index ? { ...r, profile_id: e.target.value } : r)))}
                     >

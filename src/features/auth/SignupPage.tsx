@@ -101,7 +101,7 @@ export function SignupPage() {
         </p>
       </div>
 
-      <div className="theme-light-scope flex items-center justify-center bg-bg px-6 py-10 text-fg sm:py-12">
+      <div className="theme-light-scope flex min-w-0 items-center justify-center bg-bg px-6 py-10 text-fg sm:py-12">
         <div className="w-full" style={{ maxWidth: 'min(100%, 480px)' }}>
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />

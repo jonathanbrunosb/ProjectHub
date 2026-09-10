@@ -75,7 +75,7 @@ export function LoginPage() {
       {/* Painel do formulario e' sempre claro, independente do tema (claro/escuro)
           escolhido no app - o split 50/50 e' fixo (esquerda escura, direita clara),
           nao deve seguir a preferencia de tema do usuario/sistema. */}
-      <div className="theme-light-scope flex items-center justify-center bg-bg px-6 py-10 text-fg sm:py-12">
+      <div className="theme-light-scope flex min-w-0 items-center justify-center bg-bg px-6 py-10 text-fg sm:py-12">
         <div className="w-full" style={{ maxWidth: 'min(100%, 480px)' }}>
           <div className="mb-8 lg:hidden">
             <BrandLockupCompact />
