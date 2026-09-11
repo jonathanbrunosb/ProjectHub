@@ -182,20 +182,25 @@ export function GanttChart({
 
                 <div className="relative h-full flex-1">
                   {anchor && (
-                    <Tooltip
-                      side="top"
-                      content={
-                        <span>
-                          <b>{item.label}</b><br />
-                          {formatDate(item.start)} → {formatDate(item.end)}
-                          {item.progress != null && <><br />Progresso: {Math.round(item.progress)}%</>}
-                          {shifted && <><br />Baseline: {formatDate(item.baselineEnd)}</>}
-                        </span>
-                      }
+                    // O posicionamento absoluto fica FORA do Tooltip: o wrapper
+                    // do Tooltip e' `relative inline-flex`, entao envolver a barra
+                    // com ele a ancorava num pai de largura zero (conteudo unico
+                    // fora do fluxo) - a barra virava 0px e sumia do cronograma.
+                    <span
+                      className="absolute top-1/2 -translate-y-1/2"
+                      style={{ left: `${left}%`, width: item.isMilestone ? undefined : `${width}%` }}
                     >
-                      <span
-                        className="absolute top-1/2 -translate-y-1/2"
-                        style={{ left: `${left}%`, width: item.isMilestone ? undefined : `${width}%` }}
+                      <Tooltip
+                        side="top"
+                        className={item.isMilestone ? undefined : 'w-full'}
+                        content={
+                          <span>
+                            <b>{item.label}</b><br />
+                            {formatDate(item.start)} → {formatDate(item.end)}
+                            {item.progress != null && <><br />Progresso: {Math.round(item.progress)}%</>}
+                            {shifted && <><br />Baseline: {formatDate(item.baselineEnd)}</>}
+                          </span>
+                        }
                       >
                         {item.isMilestone ? (
                           <span
@@ -205,15 +210,15 @@ export function GanttChart({
                             )}
                           />
                         ) : (
-                          <span className={cn('relative block h-3.5 overflow-hidden rounded-sm ring-1 ring-inset ring-border', toneClass[item.tone ?? 'info'], 'opacity-50')}>
+                          <span className={cn('relative block h-3.5 w-full overflow-hidden rounded-sm ring-1 ring-inset ring-border', toneClass[item.tone ?? 'info'], 'opacity-50')}>
                             <span
                               className={cn('absolute inset-y-0 left-0 rounded-sm opacity-100', toneClass[item.tone ?? 'info'])}
                               style={{ width: `${Math.min(100, Math.max(0, item.progress ?? 0))}%` }}
                             />
                           </span>
                         )}
-                      </span>
-                    </Tooltip>
+                      </Tooltip>
+                    </span>
                   )}
 
                   {/* Baseline como linha fina abaixo da barra atual */}
