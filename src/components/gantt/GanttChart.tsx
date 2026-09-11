@@ -201,7 +201,7 @@ export function GanttChart({
                             )}
                           />
                         ) : (
-                          <span className={cn('relative block h-3.5 overflow-hidden rounded-sm', toneClass[item.tone ?? 'info'], 'opacity-30')}>
+                          <span className={cn('relative block h-3.5 overflow-hidden rounded-sm ring-1 ring-inset ring-border', toneClass[item.tone ?? 'info'], 'opacity-50')}>
                             <span
                               className={cn('absolute inset-y-0 left-0 rounded-sm opacity-100', toneClass[item.tone ?? 'info'])}
                               style={{ width: `${Math.min(100, Math.max(0, item.progress ?? 0))}%` }}
