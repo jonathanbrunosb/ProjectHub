@@ -3,7 +3,7 @@ import type { Milestone, Task, TaskCorresponsible } from '@/types/domain';
 
 const TASK_COLUMNS =
   'id,project_id,phase_id,parent_task_id,code,title,description,assignee_id,priority,status,' +
-  'start_date,due_date,baseline_due_date,completed_at,weight,progress,is_milestone,is_critical,' +
+  'start_date,due_date,baseline_start_date,baseline_due_date,completed_at,weight,progress,is_milestone,is_critical,' +
   'estimated_hours,baseline_estimated_hours,assignee_allocation_percent,tags,position';
 
 export interface TaskWithContext extends Task {

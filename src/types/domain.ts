@@ -137,6 +137,10 @@ export interface Project {
   baseline_start_date: string | null;
   baseline_target_date: string | null;
   actual_end_date: string | null;
+  /** 0 = cronograma sem baseline congelada. Incrementa a cada replanejamento. */
+  schedule_baseline_version: number;
+  schedule_baseline_frozen_at: string | null;
+  schedule_baseline_frozen_by: string | null;
   evm_enabled: boolean;
   financial_module_mode: FinancialModuleMode;
   archived_at: string | null;
@@ -212,6 +216,8 @@ export interface Task {
   status: TaskStatus;
   start_date: string | null;
   due_date: string | null;
+  /** Plano aprovado: gravado pelo congelamento da baseline, nunca por edicao direta. */
+  baseline_start_date: string | null;
   baseline_due_date: string | null;
   completed_at: string | null;
   weight: number;

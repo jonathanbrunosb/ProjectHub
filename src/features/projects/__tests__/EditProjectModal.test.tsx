@@ -51,6 +51,7 @@ const { EditProjectModal } = await import('../ProjectPage');
 function baseProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'proj-1', code: 'CTB-001', name: 'Projeto Teste', portfolio_id: null, template_id: null,
+    schedule_baseline_version: 0, schedule_baseline_frozen_at: null, schedule_baseline_frozen_by: null,
     category: 'Regulatorio', objective: null, scope: null, expected_results: null,
     executive_summary: null, executive_summary_updated_at: null,
     sponsor_id: 'sponsor-1', owner_id: 'owner-1', area_id: 'area-1', company_id: 'co-1',

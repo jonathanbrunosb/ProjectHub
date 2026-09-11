@@ -9,6 +9,7 @@ const PROJECT_COLUMNS =
   'priority,status,phase,health,health_is_manual,health_override_reason,health_overridden_at,' +
   'progress_method,progress_planned,progress_actual,start_date,target_date,' +
   'baseline_start_date,baseline_target_date,actual_end_date,evm_enabled,financial_module_mode,' +
+  'schedule_baseline_version,schedule_baseline_frozen_at,schedule_baseline_frozen_by,' +
   'archived_at,updated_at';
 
 export async function listProjectOverview(): Promise<ProjectOverview[]> {
@@ -157,6 +158,28 @@ export async function overrideHealth(projectId: string, health: string, reason: 
 export async function clearHealthOverride(projectId: string): Promise<void> {
   const { error } = await supabase.rpc('clear_health_override', { p_project_id: projectId });
   if (error) throw error;
+}
+
+/**
+ * Congela o plano aprovado do cronograma: carimba a baseline de todas as
+ * tarefas do projeto. Restrito a Admin/PMO pelo banco. Retorna quantas tarefas
+ * foram congeladas.
+ */
+export async function freezeScheduleBaseline(projectId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('freeze_project_schedule_baseline', {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/** Replanejamento: nova baseline sobre o plano vigente, com justificativa obrigatoria. */
+export async function rebaselineSchedule(projectId: string, reason: string): Promise<number> {
+  const { data, error } = await supabase.rpc('rebaseline_project_schedule', {
+    p_project_id: projectId, p_reason: reason,
+  });
+  if (error) throw error;
+  return Number(data ?? 0);
 }
 
 export interface ProjectMemberRow {

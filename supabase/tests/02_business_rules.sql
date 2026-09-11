@@ -409,6 +409,94 @@ select pg_temp.assert(
   )),
   'alocacao cancelada preserva historico sem consumir capacidade');
 
+-- -----------------------------------------------------------------------------
+-- Baseline de cronograma congelada
+-- -----------------------------------------------------------------------------
+
+create or replace function pg_temp.login(p_email text)
+returns void language plpgsql security definer as $$
+declare v_id uuid;
+begin
+  select id into v_id from auth.users where email = p_email;
+  if v_id is null then raise exception 'usuario % inexistente', p_email; end if;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_id::text, 'role', 'authenticated')::text, false);
+end $$;
+
+\set baseline_project_id 99999999-9999-4999-8999-000000000030
+
+insert into public.projects (id, code, name, category, status, start_date, target_date, progress_method)
+values (:'baseline_project_id', 'TEST-BASE', 'Projeto baseline', 'Regulatorio', 'planejamento',
+        current_date, current_date + 30, 'automatico');
+
+insert into public.tasks (project_id, code, title, start_date, due_date, weight) values
+  (:'baseline_project_id', 'B001', 'Tarefa um', current_date, current_date + 5, 1),
+  (:'baseline_project_id', 'B002', 'Tarefa dois', current_date + 6, current_date + 10, 1);
+
+select pg_temp.assert(
+  (select count(*) = 2 from public.tasks
+    where project_id = :'baseline_project_id' and baseline_due_date is null),
+  'tarefa criada fora de template nasce sem baseline');
+
+select pg_temp.login('colab@pmocontabil.dev');
+select pg_temp.assert_raises(
+  format('select public.freeze_project_schedule_baseline(%L)', :'baseline_project_id'),
+  'colaborador nao congela a baseline do cronograma');
+
+select pg_temp.login('pmo@pmocontabil.dev');
+select pg_temp.assert(
+  public.freeze_project_schedule_baseline(:'baseline_project_id') = 2,
+  'PMO congela a baseline de todas as tarefas do projeto');
+
+select pg_temp.assert(
+  (select count(*) = 2 from public.tasks
+    where project_id = :'baseline_project_id'
+      and baseline_start_date = start_date and baseline_due_date = due_date),
+  'congelamento carimba inicio e termino vigentes');
+
+select pg_temp.assert(
+  (select schedule_baseline_version = 1 and schedule_baseline_frozen_at is not null
+     from public.projects where id = :'baseline_project_id'),
+  'projeto registra versao e data do congelamento');
+
+select pg_temp.assert_raises(
+  format('select public.freeze_project_schedule_baseline(%L)', :'baseline_project_id'),
+  'projeto ja congelado exige replanejamento em vez de novo congelamento');
+
+select pg_temp.assert_raises(
+  format('select public.rebaseline_project_schedule(%L, %L)', :'baseline_project_id', 'curto'),
+  'replanejamento sem justificativa suficiente e rejeitado');
+
+-- A baseline so muda pela RPC: update direto e barrado mesmo para o PMO.
+select pg_temp.assert_raises(
+  format('update public.tasks set baseline_due_date = current_date where project_id = %L',
+         :'baseline_project_id'),
+  'escrita direta na baseline da tarefa e barrada');
+
+select pg_temp.assert_raises(
+  format('update public.projects set schedule_baseline_version = 9 where id = %L',
+         :'baseline_project_id'),
+  'escrita direta no controle de baseline do projeto e barrada');
+
+update public.tasks set due_date = due_date + 3 where project_id = :'baseline_project_id';
+
+select pg_temp.assert(
+  public.rebaseline_project_schedule(:'baseline_project_id', 'Replanejamento aprovado pelo comite') = 2,
+  'PMO replaneja a baseline informando justificativa');
+
+select pg_temp.assert(
+  (select schedule_baseline_version = 2 from public.projects where id = :'baseline_project_id'),
+  'replanejamento incrementa a versao da baseline');
+
+select pg_temp.assert(
+  (select count(*) = 2 from public.application_audit_log
+    where project_id = :'baseline_project_id' and action = 'schedule_change'
+      and new_data ->> 'event' in ('baseline_congelada', 'baseline_replanejada')),
+  'congelamento e replanejamento ficam na trilha de auditoria');
+
+select set_config('request.jwt.claims', '', false);
+delete from public.projects where id = :'baseline_project_id';
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
 delete from public.projects where id = :'linked_project_id';

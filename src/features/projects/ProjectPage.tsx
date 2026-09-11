@@ -17,7 +17,7 @@ import { resolveFinancialEnabled } from '@/lib/financialModule';
 import { describeError } from '@/lib/supabase/client';
 import {
   getProject, getProjectOverview, listAllCompanies, listProfiles, listProjectMembers,
-  updateProject, ProjectConflictError,
+  updateProject, ProjectConflictError, freezeScheduleBaseline, rebaselineSchedule,
 } from '@/services/projects';
 import { listAreas } from '@/services/areas';
 import type { FinancialModuleMode, Profile } from '@/types/domain';
@@ -313,9 +313,42 @@ function OverviewTab({ projectId, canEdit }: { projectId: string; canEdit: boole
   );
 }
 
-function ScheduleTab({ projectId }: { projectId: string }) {
+export function ScheduleTab({ projectId }: { projectId: string }) {
+  const { can } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [rebaselining, setRebaselining] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const project = useQuery({ queryKey: ['project', projectId], queryFn: () => getProject(projectId) });
   const tasks = useQuery({ queryKey: ['tasks', projectId], queryFn: () => listTasks(projectId) });
   const milestones = useQuery({ queryKey: ['milestones', projectId], queryFn: () => listMilestones(projectId) });
+
+  const canManage = can('portfolio.manage');
+  const version = project.data?.schedule_baseline_version ?? 0;
+  const frozenAt = project.data?.schedule_baseline_frozen_at ?? null;
+
+  const afterBaselineChange = (count: number, title: string) => {
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+    toast.success(title, `${count} tarefa(s) com plano aprovado registrado.`);
+  };
+
+  const freeze = useMutation({
+    mutationFn: () => freezeScheduleBaseline(projectId),
+    onSuccess: (n) => afterBaselineChange(n, 'Baseline congelada'),
+    onError: (e) => toast.error('Nao foi possivel congelar a baseline', describeError(e)),
+  });
+
+  const rebaseline = useMutation({
+    mutationFn: () => rebaselineSchedule(projectId, reason.trim()),
+    onSuccess: (n) => {
+      setRebaselining(false);
+      setReason('');
+      afterBaselineChange(n, 'Baseline replanejada');
+    },
+    onError: (e) => toast.error('Nao foi possivel replanejar a baseline', describeError(e)),
+  });
 
   const items = useMemo(() => {
     const rows = (tasks.data ?? [])
@@ -325,7 +358,7 @@ function ScheduleTab({ projectId }: { projectId: string }) {
         label: `${t.code} · ${t.title}`,
         start: t.start_date ?? t.due_date,
         end: t.due_date ?? t.start_date,
-        baselineStart: t.start_date,
+        baselineStart: t.baseline_start_date,
         baselineEnd: t.baseline_due_date,
         progress: Number(t.progress),
         isMilestone: t.is_milestone,
@@ -347,8 +380,76 @@ function ScheduleTab({ projectId }: { projectId: string }) {
   if (tasks.isLoading) return <Spinner />;
 
   return (
-    <div className="card p-2">
-      <GanttChart items={items} scale="semana" />
+    <div className="space-y-3">
+      {/* Sinalizacao, nao bloqueio: o projeto segue operando sem baseline - o
+          estado fica visivel para que a decisao de congelar seja consciente. */}
+      <div className="card flex flex-wrap items-center gap-3 p-3">
+        {version === 0 ? (
+          <>
+            <Badge tone="warn">Sem baseline</Badge>
+            <p className="min-w-0 flex-1 text-xs text-muted">
+              O cronograma ainda nao tem plano aprovado, entao o Gantt nao mostra desvio.
+              Congelar registra as datas atuais como referencia.
+            </p>
+          </>
+        ) : (
+          <>
+            <Badge tone="ok">Baseline v{version}</Badge>
+            <p className="min-w-0 flex-1 text-xs text-muted">
+              Plano aprovado congelado em {formatDateTime(frozenAt)}. Autor e historico
+              na aba Historico / Auditoria.
+            </p>
+          </>
+        )}
+
+        {canManage && (
+          version === 0 ? (
+            <Button
+              variant="secondary"
+              loading={freeze.isPending}
+              onClick={() => freeze.mutate()}
+            >
+              Congelar baseline
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={() => setRebaselining(true)}>
+              Replanejar
+            </Button>
+          )
+        )}
+      </div>
+
+      <div className="card p-2">
+        <GanttChart items={items} scale="semana" />
+      </div>
+
+      <Modal
+        open={rebaselining}
+        onClose={() => setRebaselining(false)}
+        title="Replanejar a baseline"
+        description="As datas atuais passam a ser o novo plano aprovado. O desvio volta a ser medido a partir daqui."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRebaselining(false)}>Cancelar</Button>
+            <Button
+              loading={rebaseline.isPending}
+              disabled={reason.trim().length < 10}
+              onClick={() => rebaseline.mutate()}
+            >
+              Replanejar
+            </Button>
+          </>
+        }
+      >
+        <Field label="Justificativa" required hint="Minimo de 10 caracteres. Fica registrado na trilha de auditoria.">
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex.: mudanca de escopo aprovada pelo comite em 10/09."
+          />
+        </Field>
+      </Modal>
     </div>
   );
 }
