@@ -133,7 +133,7 @@ export function TaskList({
         start: t.start_date ?? t.due_date,
         end: t.due_date ?? t.start_date,
         baselineEnd: t.baseline_due_date,
-        baselineStart: t.start_date,
+        baselineStart: t.baseline_start_date,
         progress: Number(t.progress),
         isMilestone: t.is_milestone,
         isCritical: t.is_critical,
