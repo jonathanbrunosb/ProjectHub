@@ -149,10 +149,14 @@ export function GanttChart({
           {items.map((item) => {
             const start = parseDateOnly(item.start);
             const end = parseDateOnly(item.end ?? item.start);
+            // Se so' uma das duas datas veio valida, a barra ainda deve aparecer
+            // (marcador de largura minima) em vez de sumir por completo - uma
+            // tarefa com data parcial nao deveria ficar invisivel no cronograma.
+            const anchor = start ?? end;
             const bStart = parseDateOnly(item.baselineStart ?? null);
             const bEnd = parseDateOnly(item.baselineEnd ?? null);
-            const left = start ? pct(start) : 0;
-            const width = start && end ? Math.max(0.6, pct(end) - left) : 0;
+            const left = anchor ? pct(anchor) : 0;
+            const width = anchor ? Math.max(0.6, pct(end ?? anchor) - left) : 0;
             const shifted = bEnd && end && bEnd.getTime() !== end.getTime();
 
             return (
@@ -177,7 +181,7 @@ export function GanttChart({
                 </div>
 
                 <div className="relative h-full flex-1">
-                  {start && (
+                  {anchor && (
                     <Tooltip
                       side="top"
                       content={
