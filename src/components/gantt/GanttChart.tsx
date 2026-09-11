@@ -224,7 +224,7 @@ export function GanttChart({
                   {/* Baseline como linha fina abaixo da barra atual */}
                   {bStart && bEnd && !item.isMilestone && (
                     <span
-                      className="absolute bottom-1 h-0.5 rounded bg-fg/30"
+                      className="absolute bottom-1 h-0.5 rounded bg-fg/50"
                       style={{ left: `${pct(bStart)}%`, width: `${Math.max(0.4, pct(bEnd) - pct(bStart))}%` }}
                       title={`Baseline: ${formatDate(item.baselineStart)} → ${formatDate(item.baselineEnd)}`}
                     />
@@ -237,7 +237,7 @@ export function GanttChart({
 
         <div className="flex flex-wrap items-center gap-4 border-t border-border px-3 py-2 text-[10px] text-muted">
           <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-info" /> Barra: periodo e progresso</span>
-          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-fg/30" /> Baseline</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-fg/50" /> Baseline</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-strategic" /> Marco</span>
           <span className="flex items-center gap-1.5"><span className="h-3 w-px bg-brand" /> Hoje</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-4 bg-warn/30" /> Janela critica contabil</span>
