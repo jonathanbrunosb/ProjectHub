@@ -497,6 +497,47 @@ select pg_temp.assert(
 select set_config('request.jwt.claims', '', false);
 delete from public.projects where id = :'baseline_project_id';
 
+-- -----------------------------------------------------------------------------
+-- Invariante de exposicao das RPCs
+--
+-- Funcao SECURITY DEFINER em `public` e' exposta pelo PostgREST em
+-- /rest/v1/rpc/<nome>. Nenhuma do app roda sem sessao, entao nenhuma deve ser
+-- executavel por `anon` (nem via PUBLIC). Este teste quebra o CI se uma RPC
+-- nova esquecer o revoke - foi assim que a exposicao passou despercebida antes.
+-- -----------------------------------------------------------------------------
+
+select pg_temp.assert(
+  not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
+       and has_function_privilege('anon', p.oid, 'EXECUTE')
+  ),
+  'nenhuma RPC SECURITY DEFINER e executavel sem autenticacao');
+
+-- O endurecimento nao pode ter derrubado o acesso de quem usa o app. Parte das
+-- RPCs so' era alcancavel via PUBLIC, entao revogar PUBLIC sem reconceder
+-- explicitamente as tornaria inacessiveis tambem para quem esta autenticado.
+-- Sem numero fixo: a invariante e' que nenhuma ficou para tras.
+select pg_temp.assert(
+  not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prokind = 'f' and p.prosecdef
+       and not has_function_privilege('authenticated', p.oid, 'EXECUTE')
+  ),
+  'toda RPC SECURITY DEFINER segue executavel por usuario autenticado');
+
+-- Guarda de integridade nao deve resolver nomes pelo search_path do chamador.
+select pg_temp.assert(
+  not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'app'
+       and p.proname in ('is_freezing_baseline', 'guard_task_baseline',
+                         'guard_project_baseline_control')
+       and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'))
+                        as cfg where cfg like 'search_path=%')
+  ),
+  'guardas da baseline tem search_path fixo');
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
 delete from public.projects where id = :'linked_project_id';
