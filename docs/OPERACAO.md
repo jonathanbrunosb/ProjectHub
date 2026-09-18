@@ -394,6 +394,28 @@ enviados pelo frontend). Curva PV × EV × AC e cartões de KPI com semáforo (`
   (`can_read_project`/`can_write_project`) desde a `0007` — nenhuma migration nova foi
   necessária, só a interface que faltava.
 
+## Dashboard personalizável
+
+A Visão Executiva (`/`) é um catálogo fixo de ~11 blocos (`DASHBOARD_WIDGETS` em
+`src/services/dashboardLayout.ts`: KPIs de execução, financeiro/governança, prazos, os
+gráficos e as listas operacionais). Botão **Personalizar** no cabeçalho abre um modal para
+mostrar/ocultar e reordenar (subir/descer) — **não** é um editor de grid livre com
+drag-and-drop: o recorte deliberado foi reordenar/ocultar blocos existentes, não montar um
+layout arbitrário, para manter escopo e superfície de teste pequenos.
+
+- **Persistência:** reaproveita `public.column_preferences` (module='dashboard'), a mesma
+  tabela já usada para preferência de colunas de `DataTable` — nenhuma migration nova.
+  RLS já restringe a leitura/escrita ao próprio usuário (`profile_id = auth.uid()`).
+- **Sem preferência salva = layout atual** (tudo visível, ordem do catálogo) — zero
+  regressão para quem nunca personalizar.
+- **Widget novo adicionado depois:** `resolveDashboardOrder()` acrescenta ao final da ordem
+  salva qualquer id do catálogo ausente dela — um layout salvo nunca esconde um bloco novo
+  por acidente, só entra no fim até o usuário reordenar.
+- Os quatro painéis de listas (riscos/marcos/decisões/atividade) formam **um único widget**
+  (`listas_operacionais`): são uma grade de 4 colunas entre si — separá-los quebraria esse
+  layout, então a granularidade de personalização é por bloco/seção, não por painel
+  individual dentro da grade de listas.
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -455,7 +477,7 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Pendência | Situação | Caminho |
 |---|---|---|
 | Edge Functions de integração | `admin-create-user` implementada; entrega externa de notificações via webhook genérico implementada (`Configurações → Integrações`, ver "Automações e alertas") | Cliente nativo específico (Incoming Webhook formatado para Teams, conector Power BI) ainda não existe — hoje é o Admin quem aponta o webhook genérico para esses destinos via Zapier/Make/n8n |
-| Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
+| Dashboard: editor de grid livre | Mostrar/ocultar/reordenar blocos fixos implementado (ver "Dashboard personalizável") | Drag-and-drop de posição/tamanho arbitrário, se algum dia fizer sentido — escopo deliberadamente reduzido nesta primeira versão |
 
 ## Riscos técnicos a acompanhar
 
