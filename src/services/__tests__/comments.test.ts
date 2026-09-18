@@ -8,9 +8,9 @@ const updateEq = vi.fn(async (_column: string, _value: string) => ({ error: null
 const update = vi.fn((_payload: Record<string, unknown>) => ({ eq: updateEq }));
 const deleteEq = vi.fn(async (_column: string, _value: string) => ({ error: null as Error | null }));
 const del = vi.fn(() => ({ eq: deleteEq }));
-const from = vi.fn(() => ({ select, insert, update, delete: del }));
+const from = vi.fn((_table: string) => ({ select, insert, update, delete: del }));
 
-vi.mock('@/lib/supabase/client', () => ({ supabase: { from: (table: string) => from(table) } }));
+vi.mock('@/lib/supabase/client', () => ({ supabase: { from } }));
 
 const { listComments, createComment, updateComment, deleteComment, MAX_COMMENT_LENGTH } = await import('../comments');
 
