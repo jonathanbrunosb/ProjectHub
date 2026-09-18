@@ -224,9 +224,16 @@ Resumo operacional:
 | Edge Functions (`admin-create-user`, `admin-reset-password`, `admin-delete-user`) | Publicadas | Publicadas |
 | Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
 | SMTP próprio (`Authentication → SMTP Settings`) | Configurado | Configurado |
+| MFA — TOTP (`Authentication → Multi-Factor Authentication`) | Habilitado | Habilitado |
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
 não basta salvar no GitHub.
+
+**MFA.** TOTP (aplicativo autenticador) habilitado nos dois ambientes — feito manualmente pelo
+Admin em cada projeto (`Authentication → Multi-Factor Authentication`, sem sincronização
+automática entre QA e PRD, mesmo padrão do SMTP). Isso destrava a capacidade no backend, mas
+sozinho não é usável: a interface do ProjectHub ainda não tem tela de cadastro de fator (QR
+code) nem desafio de segundo fator no login — ver pendência em "Pendências conhecidas".
 
 **SMTP próprio.** Os dois ambientes enviam e-mail de autenticação via Resend, a partir do
 domínio corporativo `mail.contabilidade-eqtl.com` (DKIM/SPF verificados), em vez do e-mail
@@ -408,7 +415,7 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 |---|---|---|
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
-| MFA | Schema preparado | Habilitar no Supabase Auth |
+| MFA — interface | TOTP habilitado no Supabase Auth (QA e PRD, `Authentication → Multi-Factor Authentication`) | Cadastro de fator (QR code) e desafio de segundo fator no login — sem isso o toggle fica ligado mas inerte, ninguém consegue usar |
 
 ## Riscos técnicos a acompanhar
 
