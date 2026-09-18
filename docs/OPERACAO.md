@@ -26,6 +26,8 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `0018_attachments_entity_check.sql` | Restringe `attachments.entity` aos mesmos valores já usados por `comments` (defesa em profundidade antes da interface de upload existir) |
 | `0019_service_role_grants.sql` | Restaura os GRANTs de `service_role` no schema `public`. QA estava sem em **todas as 50 tabelas** e PRD tinha em todas — divergência que fazia qualquer Edge Function falhar com `permission denied` ao tocar tabela. Idempotente: no-op onde já existem |
 | `20260909132537_publish_reference_templates.sql` | Publica o catálogo funcional de 6 templates, 8 fases, 8 tarefas-modelo e o campo de referência do template de sistemas em QA e PRD. Somente dados, idempotente e sem alteração de schema |
+| `20260918190000_schedule_alert_engine.sql` | Extrai `generate_alerts()` para `app.run_alert_engine()` (sem checagem de permissão) e agenda via Supabase Cron (`pg_cron`), guardado para ambientes sem a extensão |
+| `20260919100000_comments_author_only_edit.sql` | FK `comments.created_by → profiles` (permite exibir o nome do autor) e RLS de UPDATE/DELETE restrita ao autor (ou Admin/PMO) — a política genérica anterior permitia que qualquer colaborador com escrita no projeto editasse/apagasse o comentário de outra pessoa |
 
 > A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
 > usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
@@ -63,8 +65,8 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 155 testes de frontend (Vitest + Testing Library)
-./supabase/tests/run.sh     # 99 asserções no banco (47 RLS + 38 regras + 14 ambiente)
+npm run test                # 264 testes de frontend (Vitest + Testing Library)
+./supabase/tests/run.sh     # 136 asserções no banco (48 RLS + 72 regras + 16 ambiente)
 ```
 
 Cobertura do banco: progresso ponderado (incluindo subtarefas e canceladas), progresso
@@ -314,6 +316,31 @@ via bucket privado `project-files` no Storage. `src/components/attachments/Attac
 - **Download:** URL assinada de 60 segundos — o bucket é privado, nunca há link público
   persistente.
 
+## Comentários
+
+Thread de comentários por registro (projeto, tarefa, risco, plano de ação, decisão ou status
+report), na tabela `public.comments`. `src/components/comments/CommentThread.tsx` é o
+componente reutilizável, plugado em quatro telas (aba Comentários do projeto, `TaskModal`,
+`RiskModal`, `ActionPlanModal`) — mesmo padrão de integração dos Anexos; `src/services/comments.ts`
+concentra a lógica.
+
+- **Resposta simples:** `parent_id` referencia outro comentário; a tela mostra o texto citado
+  acima da resposta. Sem árvore aninhada — lista cronológica plana, suficiente para o volume
+  de uso e mais simples de auditar.
+- **Limite:** 8000 caracteres por comentário (`comments_body_ck`), replicado no frontend antes
+  do envio.
+- **Edição restrita ao autor.** A política original de UPDATE/DELETE herdava a regra genérica
+  de tabela-filha (`can_write_project`) — qualquer colaborador com escrita no projeto podia
+  editar ou apagar o comentário de outra pessoa. Migration `20260919100000` aperta para
+  `created_by = auth.uid() OU Admin/PMO`, no mesmo padrão já usado em `approvals_update`
+  (0011). Anexo é documento do projeto (edição coletiva faz sentido); comentário é registro de
+  quem disse o quê, então a autoria decide.
+- **Nome do autor:** `created_by` ganhou FK para `profiles` na mesma migration (nenhuma coluna
+  de carimbo — `created_by`/`updated_by` — tinha FK até então), habilitando o embed
+  `profiles!comments_created_by_fkey(full_name)` usado na tela. Se o usuário for excluído, o FK
+  é `on delete set null` (mesmo padrão dos demais responsáveis) — o comentário permanece,
+  exibido como "Usuário removido".
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -342,7 +369,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
-| Comentários por entidade | Tabela e RLS prontas | Componente de thread |
 | EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
 | Edição de dependências pela interface | Tabela e visualização no Gantt prontas | Editor de predecessora/sucessora |
 
