@@ -292,6 +292,28 @@ próprio de ~271 kB gzip: quem nunca exporta não paga esse custo no carregament
 Acima de ~10 mil registros, avalie mover a geração para uma Edge Function antes que o
 navegador do usuário vire o gargalo.
 
+## Anexos
+
+Upload de arquivos por projeto, tarefa, risco, plano de ação, decisão ou status report,
+via bucket privado `project-files` no Storage. `src/components/attachments/AttachmentsPanel.tsx`
+é o componente reutilizável, plugado em quatro telas (aba Anexos do projeto, `TaskModal`,
+`RiskModal`, `ActionPlanModal`); `src/services/attachments.ts` concentra a lógica.
+
+- **Limite:** 50 MB por arquivo, aplicado tanto no bucket quanto no frontend antes do envio.
+- **Tipos aceitos:** PDF, PNG/JPEG/WEBP, CSV, TXT, Office (xlsx/docx/pptx) — mesma lista nos
+  dois lados.
+- **Caminho no Storage:** `<project_id>/<entity>/<uuid>-<nome-sanitizado>`. O primeiro
+  segmento é o que a política de `storage.objects` usa para autorizar
+  (`app.can_write_project`/`can_read_project`) — a tabela `public.attachments` tem RLS
+  equivalente, então autorização e armazenamento nunca divergem.
+- **Nome de exibição preservado:** a chave do objeto precisa ser ASCII sem espaço (o
+  Storage rejeita acento/espaço), mas `file_name` guarda o nome original — só o segmento de
+  caminho é sanitizado.
+- **Sem lixo órfão:** se o `insert` na tabela falhar depois do upload (RLS, rede), o objeto
+  já enviado ao bucket é removido.
+- **Download:** URL assinada de 60 segundos — o bucket é privado, nunca há link público
+  persistente.
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -317,7 +339,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 
 | Pendência | Situação | Caminho |
 |---|---|---|
-| Upload de anexos pela interface | Bucket, políticas e tabela `attachments` prontos | Componente de upload + URL assinada |
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
