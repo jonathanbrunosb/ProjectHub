@@ -410,8 +410,29 @@ restrita a Admin/PMO. `public.refresh_all_health()` segue disparada manualmente
 (Configurações → Sistema); agendá-la também é um passo simples e independente, se algum
 dia fizer sentido.
 
-A arquitetura de notificação já contempla canais `email`, `teams` e `webhook` no enum —
-a entrega externa é o que falta implementar.
+A arquitetura de notificação já contempla canais `email`, `teams` e `webhook` no enum.
+
+**Webhook genérico (entrega externa).** Configurável em `Configurações → Integrações`
+(Admin): URL de destino + segredo opcional para assinatura HMAC-SHA256 (header
+`X-ProjectHub-Signature: sha256=...`). Com o webhook ativo, `app.run_alert_engine()`
+despacha ao final de cada execução (`app.dispatch_webhook_notifications()`) um POST em JSON
+para cada notificação ainda não entregue (últimas 24h, lote de 50 por ciclo) — cobre as
+mesmas três regras do motor de alertas, sem cliente nativo por canal: um endpoint HTTP
+único destrava Teams (Incoming Webhook), Power BI, Zapier/Make/n8n ou receptor próprio. A
+tela também tem um botão de teste (`public.test_webhook_delivery()`) para validar a URL sem
+esperar o próximo ciclo.
+
+- **Transporte:** `pg_net` (`net.http_post`), chamado direto do Postgres — sem Edge Function
+  nova, reaproveitando o mesmo `pg_cron` do motor de alertas. Só existe no Supabase
+  hospedado; fora dele (CI, Postgres local) o despacho é um no-op silencioso, mesmo padrão
+  de guard do `pg_cron` (`20260918190000`).
+- **Fire-and-forget:** `net.http_post` é assíncrono (enfileira o request; a resposta HTTP
+  fica em `net._http_response`, sem loop de leitura aqui). `notifications.webhook_delivered_at`
+  marca que o envio foi enfileirado, não que o receptor confirmou o recebimento — não há
+  retry nem alerta de falha de entrega nesta primeira versão.
+- **Segredo nunca sai da tabela de configuração:** fica fora da trilha de auditoria (só
+  `enabled`/`url` são registrados em `config_change`) e a leitura de `webhook_config` é
+  restrita a Admin via RLS.
 
 ## Pendências conhecidas
 
@@ -419,7 +440,7 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 
 | Pendência | Situação | Caminho |
 |---|---|---|
-| Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
+| Edge Functions de integração | `admin-create-user` implementada; entrega externa de notificações via webhook genérico implementada (`Configurações → Integrações`, ver "Automações e alertas") | Cliente nativo específico (Incoming Webhook formatado para Teams, conector Power BI) ainda não existe — hoje é o Admin quem aponta o webhook genérico para esses destinos via Zapier/Make/n8n |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 
 ## Riscos técnicos a acompanhar
