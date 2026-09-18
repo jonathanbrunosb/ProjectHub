@@ -214,15 +214,23 @@ Resumo operacional:
 
 | | QA | PRD |
 |---|---|---|
-| Projeto Supabase | Existente | A provisionar |
-| Migrations `0001` → `0018` | Sim | Sim, as mesmas |
+| Projeto Supabase | Provisionado | Provisionado |
+| Migrations | Sim, todas | Sim, as mesmas |
 | `seed.sql` | Sim | **Nunca** (bloqueado por guarda) |
-| `app_environment` | `QA` | `PRD` (definir manualmente após as migrations) |
-| Edge Functions (`admin-create-user`, `admin-reset-password`, `admin-delete-user`) | Publicadas | Publicar |
+| `app_environment` | `QA` | `PRD` |
+| Edge Functions (`admin-create-user`, `admin-reset-password`, `admin-delete-user`) | Publicadas | Publicadas |
 | Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
+| SMTP próprio (`Authentication → SMTP Settings`) | Configurado | Configurado |
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
 não basta salvar no GitHub.
+
+**SMTP próprio.** Os dois ambientes enviam e-mail de autenticação via Resend, a partir do
+domínio corporativo `mail.contabilidade-eqtl.com` (DKIM/SPF verificados), em vez do e-mail
+nativo do Supabase — que tem um limite de envio baixo e não é apropriado para produção.
+Cada projeto Supabase configura o SMTP de forma independente (`Authentication → SMTP
+Settings`) — não há sincronização automática entre QA e PRD, então uma rotação da chave de
+API do Resend precisa ser aplicada manualmente nos dois.
 
 ## Exportação de dados
 
@@ -308,8 +316,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Agendamento do motor de alertas | Execução manual | Supabase Cron |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
-| SMTP próprio | Não configurado (usa o e-mail nativo do Supabase, limitado) | Configurar em `Authentication → SMTP Settings` para habilitar convite por e-mail e recuperação de senha confiáveis |
-| Projeto Supabase de PRD | Código pronto; ambiente aparece desabilitado sem as variáveis `_PRD_` | Seguir o checklist de provisionamento em [AMBIENTES.md](AMBIENTES.md) |
 | Comentários por entidade | Tabela e RLS prontas | Componente de thread |
 | EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
 | Edição de dependências pela interface | Tabela e visualização no Gantt prontas | Editor de predecessora/sucessora |
