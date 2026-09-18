@@ -304,6 +304,12 @@ export interface IndicatorMeasurement {
   target_value: number | null; note: string | null;
 }
 
+/** Snapshot de Earned Value Management - `spi`/`cpi` sao colunas geradas pelo banco (ev/pv, ev/ac). */
+export interface EvmSnapshot {
+  id: string; project_id: string; reference_date: string;
+  pv: number; ev: number; ac: number; spi: number | null; cpi: number | null;
+}
+
 export interface Decision {
   id: string; project_id: string; code: string; subject: string; context: string | null;
   alternatives: string | null; recommendation: string | null; decider_id: string | null;
