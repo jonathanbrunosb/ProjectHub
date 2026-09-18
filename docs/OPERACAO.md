@@ -298,9 +298,15 @@ navegador do usuário vire o gargalo.
 `automation_rules`: tarefa vencida, risco crítico sem plano, plano de ação vencido.
 `public.refresh_all_health()` recalcula a saúde do portfólio preservando overrides.
 
-Hoje ambas são disparadas manualmente (Configurações → Sistema e Central de Notificações,
-restritas a Admin/PMO). Para produção, agende-as via **Supabase Cron** ou uma Edge
-Function chamada por *scheduler*.
+**Motor de alertas agendado.** A lógica de `generate_alerts()` vive em
+`app.run_alert_engine()`, chamada diretamente pelo **Supabase Cron** (`pg_cron`) todo dia
+às 10:00 UTC (07:00 horário de Brasília), antes do início do expediente. A checagem de
+Admin/PMO fica só na RPC pública (`public.generate_alerts()`, que delega para a versão
+interna) — o job do cron não tem sessão HTTP/JWT, então não faz sentido exigir papel ali;
+a tela **Central de Notificações** continua disponível para acionar manualmente, sempre
+restrita a Admin/PMO. `public.refresh_all_health()` segue disparada manualmente
+(Configurações → Sistema); agendá-la também é um passo simples e independente, se algum
+dia fizer sentido.
 
 A arquitetura de notificação já contempla canais `email`, `teams` e `webhook` no enum —
 a entrega externa é o que falta implementar.
@@ -313,7 +319,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 |---|---|---|
 | Upload de anexos pela interface | Bucket, políticas e tabela `attachments` prontos | Componente de upload + URL assinada |
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
-| Agendamento do motor de alertas | Execução manual | Supabase Cron |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
 | Comentários por entidade | Tabela e RLS prontas | Componente de thread |
