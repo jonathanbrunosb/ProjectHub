@@ -4,6 +4,7 @@ import { Drawer } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
+import { CommentThread } from '@/components/comments/CommentThread';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { listRisks, nextActionCode, upsertActionPlan, type ActionPlanWithContext } from '@/services/risks';
@@ -136,6 +137,11 @@ export function ActionPlanModal({
       {action && (
         <div className="mt-4 border-t border-border pt-4">
           <AttachmentsPanel projectId={projectId} entity="action_plan" entityId={action.id} canEdit={canEdit} compact />
+        </div>
+      )}
+      {action && (
+        <div className="mt-4 border-t border-border pt-4">
+          <CommentThread projectId={projectId} entity="action_plan" entityId={action.id} canEdit={canEdit} compact />
         </div>
       )}
     </Drawer>

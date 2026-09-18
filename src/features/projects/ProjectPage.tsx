@@ -37,6 +37,7 @@ import { GoalIndicatorTab } from './tabs/GoalIndicatorTab';
 import { DecisionsTab, IndicatorsTab, StatusReportsTab } from './tabs/GovernanceTabs';
 import { CustomFieldsPanel } from '@/features/customfields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
+import { CommentThread } from '@/components/comments/CommentThread';
 import { GanttChart } from '@/components/gantt/GanttChart';
 import { ProjectResourcesTab } from './ProjectResourcesTab';
 
@@ -53,6 +54,7 @@ const TABS = [
   { key: 'decisoes', label: 'Decisoes & Aprovacoes' },
   { key: 'campos', label: 'Campos Personalizados' },
   { key: 'anexos', label: 'Anexos' },
+  { key: 'comentarios', label: 'Comentarios' },
   { key: 'status-report', label: 'Status Reports' },
   { key: 'historico', label: 'Historico / Auditoria' },
 ];
@@ -167,6 +169,7 @@ export function ProjectPage() {
         </div>
       )}
       {tab === 'anexos' && <AttachmentsPanel projectId={projectId} entity="project" canEdit={canEdit} />}
+      {tab === 'comentarios' && <CommentThread projectId={projectId} entity="project" entityId={projectId} canEdit={canEdit} />}
       {tab === 'status-report' && <StatusReportsTab projectId={projectId} canManage={canManage} />}
       {tab === 'historico' && <HistoryTab projectId={projectId} />}
 

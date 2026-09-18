@@ -24,6 +24,26 @@ begin
   raise exception 'FALHOU (deveria ter sido rejeitado): %', p_msg;
 end $$;
 
+-- Negacao de escrita tem duas formas validas sob RLS: excecao, ou o comando
+-- executa sem erro mas nao afeta nenhuma linha (USING filtra tudo, caso de
+-- UPDATE/DELETE). Falha se a escrita efetivamente alterou dados.
+create or replace function pg_temp.assert_denied(p_sql text, p_msg text)
+returns void language plpgsql as $$
+declare v_rows bigint;
+begin
+  begin
+    execute p_sql;
+    get diagnostics v_rows = row_count;
+  exception when others then
+    raise notice 'ok (excecao) - %', p_msg;
+    return;
+  end;
+  if v_rows > 0 then
+    raise exception 'FALHOU (deveria ser negado, % linha(s) afetada(s)): %', v_rows, p_msg;
+  end if;
+  raise notice 'ok (0 linhas) - %', p_msg;
+end $$;
+
 -- -----------------------------------------------------------------------------
 -- Projeto isolado para os testes
 -- -----------------------------------------------------------------------------
@@ -616,6 +636,80 @@ delete from public.action_plans where project_id = :'alerts_project_id';
 delete from public.risks where project_id = :'alerts_project_id';
 delete from public.tasks where project_id = :'alerts_project_id';
 delete from public.projects where id = :'alerts_project_id';
+
+-- -----------------------------------------------------------------------------
+-- Comentarios por entidade: edicao/exclusao restrita ao autor (ou Admin/PMO)
+--
+-- A politica generica de tabela-filha (`can_write_project`) so' garante quem
+-- pode ESCREVER no projeto - nao quem e' dono de um comentario especifico.
+-- Sem a restricao de 20260919100000, dois colaboradores com escrita no mesmo
+-- projeto poderiam editar/apagar o comentario um do outro. Projeto isolado
+-- com dois autores com escrita (owner do projeto + colaborador com
+-- `can_edit`) para provar que a autoria, e nao so' a permissao de escrita,
+-- decide quem edita/apaga.
+-- -----------------------------------------------------------------------------
+\set comments_project_id 99999999-9999-4999-8999-000000000050
+
+select id as comments_owner_id from public.profiles where email = 'owner1@pmocontabil.dev' \gset
+select id as comments_colab_id from public.profiles where email = 'colab@pmocontabil.dev' \gset
+
+insert into public.projects (id, code, name, category, status, owner_id, start_date, target_date, progress_method)
+values (:'comments_project_id', 'TEST-COMMENTS', 'Projeto comentarios', 'Teste', 'em_andamento',
+        :'comments_owner_id', current_date - 10, current_date + 10, 'automatico');
+
+insert into public.project_members (project_id, profile_id, project_role, can_edit)
+values (:'comments_project_id', :'comments_colab_id', 'collaborator', true);
+
+-- RLS so' e' de fato imposta sob o papel `authenticated` - superuser/dono de
+-- tabela (o papel usado ate aqui neste arquivo) ignora policy por padrao no
+-- Postgres, o que mascararia um bloqueio de update/delete como "passou".
+set role authenticated;
+
+select pg_temp.login('owner1@pmocontabil.dev');
+insert into public.comments (project_id, entity, entity_id, body)
+values (:'comments_project_id', 'project', :'comments_project_id', 'Comentario do owner')
+returning id as owner_comment_id \gset
+
+select pg_temp.login('colab@pmocontabil.dev');
+insert into public.comments (project_id, entity, entity_id, body)
+values (:'comments_project_id', 'project', :'comments_project_id', 'Comentario do colaborador')
+returning id as colab_comment_id \gset
+
+-- Colaborador tem escrita no projeto (pode inserir), mas nao e' autor do
+-- comentario do owner - nao pode editar nem apagar.
+select pg_temp.assert_denied(
+  format($q$update public.comments set body = 'hack' where id = %L$q$, :'owner_comment_id'),
+  'colaborador com escrita no projeto nao edita comentario alheio');
+select pg_temp.assert_denied(
+  format($q$delete from public.comments where id = %L$q$, :'owner_comment_id'),
+  'colaborador com escrita no projeto nao apaga comentario alheio');
+
+-- Autor edita e apaga o proprio comentario.
+update public.comments set body = 'Editado pelo autor' where id = :'colab_comment_id';
+select pg_temp.assert(
+  (select body from public.comments where id = :'colab_comment_id') = 'Editado pelo autor',
+  'autor edita o proprio comentario');
+delete from public.comments where id = :'colab_comment_id';
+select pg_temp.assert(
+  not exists (select 1 from public.comments where id = :'colab_comment_id'),
+  'autor apaga o proprio comentario');
+
+-- PMO tem escrita/gestao em qualquer projeto - inclusive sobre comentario que
+-- nao e' dele, sem precisar ser membro do projeto.
+select pg_temp.login('pmo@pmocontabil.dev');
+update public.comments set body = 'Moderado pelo PMO' where id = :'owner_comment_id';
+select pg_temp.assert(
+  (select body from public.comments where id = :'owner_comment_id') = 'Moderado pelo PMO',
+  'PMO edita comentario de qualquer autor');
+delete from public.comments where id = :'owner_comment_id';
+select pg_temp.assert(
+  not exists (select 1 from public.comments where id = :'owner_comment_id'),
+  'PMO apaga comentario de qualquer autor');
+
+select set_config('request.jwt.claims', '', false);
+reset role;
+delete from public.project_members where project_id = :'comments_project_id';
+delete from public.projects where id = :'comments_project_id';
 
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';

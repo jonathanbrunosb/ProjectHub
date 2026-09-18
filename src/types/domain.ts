@@ -521,3 +521,20 @@ export interface Attachment {
   created_at: string;
   created_by: string | null;
 }
+
+// --- Comentarios ---------------------------------------------------------------
+
+export type CommentEntity = AttachmentEntity;
+
+export interface Comment {
+  id: string;
+  project_id: string;
+  entity: CommentEntity;
+  entity_id: string;
+  body: string;
+  parent_id: string | null;
+  edited_at: string | null;
+  created_at: string;
+  created_by: string | null;
+  author: { full_name: string } | null;
+}

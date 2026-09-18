@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { AttachmentsPanel } from '@/components/attachments/AttachmentsPanel';
+import { CommentThread } from '@/components/comments/CommentThread';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
 import { nextRiskCode, upsertRisk, type RiskWithContext } from '@/services/risks';
@@ -180,6 +181,11 @@ export function RiskModal({
       {risk && (
         <div className="mt-4 border-t border-border pt-4">
           <AttachmentsPanel projectId={projectId} entity="risk" entityId={risk.id} canEdit={canEdit} compact />
+        </div>
+      )}
+      {risk && (
+        <div className="mt-4 border-t border-border pt-4">
+          <CommentThread projectId={projectId} entity="risk" entityId={risk.id} canEdit={canEdit} compact />
         </div>
       )}
     </Drawer>
