@@ -1,23 +1,26 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, ComposedChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
   AlertTriangle, CalendarClock, CheckCircle2, Clock, FolderKanban, Gavel,
-  ShieldAlert, TrendingUp, Activity,
+  ShieldAlert, SlidersHorizontal, TrendingUp, Activity,
 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { CriticalityBadge } from '@/components/ui/StatusBadges';
 import { ErrorState, Skeleton } from '@/components/ui/Feedback';
+import { useToast } from '@/components/ui/Toast';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { ChartTooltip } from '@/components/charts/ChartTooltip';
 import { chartColors, categoricalColor } from '@/components/charts/chartTheme';
+import { useAuth } from '@/app/AuthProvider';
 import {
   formatCurrencyCompact, formatCurrency, formatDate, formatMonth, formatPercent,
   relativeFromNow, daysBetween,
@@ -28,6 +31,10 @@ import { getFinancialCurve } from '@/services/financial';
 import { listRisks } from '@/services/risks';
 import { listUpcomingMilestones } from '@/services/tasks';
 import { listCapacity, listDecisions, listRecentActivity, listCalendarConflicts } from '@/services/governance';
+import {
+  getDashboardLayout, resetDashboardLayout, resolveDashboardOrder, saveDashboardLayout,
+} from '@/services/dashboardLayout';
+import { DashboardCustomizeModal } from './DashboardCustomizeModal';
 import {
   areaCapacity, consolidateCurve, currentMonthKey, financialByProject, groupCount, healthDistribution,
   portfolioKpis, progressByProject,
@@ -41,6 +48,42 @@ export function DashboardPage() {
   useBreadcrumbs([{ label: 'Visao Executiva' }]);
   const navigate = useNavigate();
   const colors = chartColors();
+  const { profile } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [customizing, setCustomizing] = useState(false);
+
+  const layoutQuery = useQuery({
+    queryKey: ['dashboard-layout', profile?.id],
+    queryFn: () => getDashboardLayout(profile!.id),
+    enabled: !!profile,
+  });
+
+  const saveLayout = useMutation({
+    mutationFn: (vars: { order: string[]; hidden: string[] }) => saveDashboardLayout(profile!.id, vars),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layout', profile?.id] });
+      setCustomizing(false);
+      toast.success('Dashboard personalizado');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', (e as Error).message),
+  });
+
+  const resetLayout = useMutation({
+    mutationFn: () => resetDashboardLayout(profile!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layout', profile?.id] });
+      setCustomizing(false);
+      toast.success('Layout padrao restaurado');
+    },
+    onError: (e) => toast.error('Nao foi possivel restaurar', (e as Error).message),
+  });
+
+  const resolvedOrder = useMemo(
+    () => resolveDashboardOrder(layoutQuery.data ?? { order: [], hidden: [] }),
+    [layoutQuery.data],
+  );
+  const hiddenWidgets = useMemo(() => new Set(layoutQuery.data?.hidden ?? []), [layoutQuery.data]);
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'overview'], queryFn: listProjectOverview });
   const curveQuery = useQuery({ queryKey: ['financial', 'curve'], queryFn: () => getFinancialCurve() });
@@ -102,21 +145,8 @@ export function DashboardPage() {
 
   const loading = projectsQuery.isLoading;
 
-  return (
-    <>
-      <PageHeader
-        title="Visao Executiva"
-        description="Leitura consolidada do portfolio da Contabilidade. Clique nos indicadores para abrir os registros que os compoem."
-        actions={
-          kpis.lastUpdateAt && (
-            <span className="text-xs text-muted">
-              Ultima atualizacao do portfolio: {relativeFromNow(kpis.lastUpdateAt)}
-            </span>
-          )
-        }
-      />
-
-      {/* KPIs de execucao */}
+  const widgetNodes: Record<string, ReactNode> = {
+    kpis_execucao: (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5">
         <KpiCard
           label="Projetos ativos" value={loading ? '—' : kpis.active}
@@ -149,9 +179,10 @@ export function DashboardPage() {
           hint="Avanco realizado medio dos projetos ativos, comparado ao planejado."
         />
       </div>
+    ),
 
-      {/* KPIs financeiros (so quando ha projeto com o modulo ativo no escopo) e de governanca */}
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
+    kpis_financeiro_governanca: (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
         {(loading || anyFinancial) && (
           <>
             <KpiCard label="Orcamento" value={loading ? '—' : formatCurrencyCompact(kpis.budget)}
@@ -185,8 +216,10 @@ export function DashboardPage() {
           onClick={() => navigate('/relatorios/decisoes-pendentes')}
         />
       </div>
+    ),
 
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    kpis_prazos: (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="Tarefas vencidas" value={loading ? '—' : kpis.overdueTasks} tone="danger"
           icon={<Clock className="h-4 w-4" />} onClick={() => navigate('/tarefas?vencidas=1')} />
         <KpiCard label="Acoes vencidas" value={loading ? '—' : kpis.overdueActions} tone="warn"
@@ -203,9 +236,10 @@ export function DashboardPage() {
           onClick={() => navigate('/calendario')}
         />
       </div>
+    ),
 
-      {/* Graficos */}
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    grafico_saude_avanco: (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <ChartCard title="Saude do portfolio" description="Distribuicao por status de saude" loading={loading} empty={health.length === 0}>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
@@ -241,52 +275,54 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+    ),
 
-      {(loading || anyFinancial) && (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <ChartCard
-            title="Evolucao financeira do portfolio"
-            description="Planejado x realizado x forecast por competencia"
-            loading={curveQuery.isLoading}
-            empty={curve.length === 0}
-          >
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={curve} margin={{ left: 4, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="month" tickFormatter={formatMonth} tick={{ fontSize: 11, fill: colors.muted }} />
-                <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
-                <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} labelFormatter={formatMonth} />
-                <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
-                <Bar dataKey="planned" name="Planejado" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={22} />
-                <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={22} />
-                <Line dataKey="forecast" name="Forecast" stroke={colors.strategic} strokeWidth={2} dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
+    grafico_financeiro: (loading || anyFinancial) ? (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ChartCard
+          title="Evolucao financeira do portfolio"
+          description="Planejado x realizado x forecast por competencia"
+          loading={curveQuery.isLoading}
+          empty={curve.length === 0}
+        >
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={curve} margin={{ left: 4, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+              <XAxis dataKey="month" tickFormatter={formatMonth} tick={{ fontSize: 11, fill: colors.muted }} />
+              <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
+              <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} labelFormatter={formatMonth} />
+              <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
+              <Bar dataKey="planned" name="Planejado" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={22} />
+              <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={22} />
+              <Line dataKey="forecast" name="Forecast" stroke={colors.strategic} strokeWidth={2} dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-          <ChartCard
-            title="Orcamento x realizado x forecast por projeto"
-            description="Seis maiores orcamentos da carteira"
-            loading={loading}
-            empty={financialBars.length === 0}
-          >
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={financialBars} margin={{ left: 4, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
-                <XAxis dataKey="code" tick={{ fontSize: 10, fill: colors.muted }} interval={0} angle={-12} textAnchor="end" height={44} />
-                <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
-                <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} />
-                <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
-                <Bar dataKey="budget" name="Orcamento" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={16} />
-                <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={16} />
-                <Bar dataKey="forecast" name="Forecast" fill={colors.strategic} radius={[3, 3, 0, 0]} maxBarSize={16} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-      )}
+        <ChartCard
+          title="Orcamento x realizado x forecast por projeto"
+          description="Seis maiores orcamentos da carteira"
+          loading={loading}
+          empty={financialBars.length === 0}
+        >
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={financialBars} margin={{ left: 4, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+              <XAxis dataKey="code" tick={{ fontSize: 10, fill: colors.muted }} interval={0} angle={-12} textAnchor="end" height={44} />
+              <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
+              <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} />
+              <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
+              <Bar dataKey="budget" name="Orcamento" fill={colors.muted} radius={[3, 3, 0, 0]} maxBarSize={16} />
+              <Bar dataKey="actual" name="Realizado" fill={colors.brand} radius={[3, 3, 0, 0]} maxBarSize={16} />
+              <Bar dataKey="forecast" name="Forecast" fill={colors.strategic} radius={[3, 3, 0, 0]} maxBarSize={16} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+    ) : null,
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    grafico_distribuicao: (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <ChartCard title="Projetos por categoria" loading={loading} empty={byCategory.length === 0} height={220}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={byCategory} layout="vertical" margin={{ left: 4, right: 16 }}>
@@ -336,9 +372,10 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+    ),
 
-      {/* Listas operacionais */}
-      <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+    listas_operacionais: (
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
         <PanelList
           title="Riscos prioritarios"
           action={<Link to="/riscos" className="text-xs text-brand hover:underline">Ver todos</Link>}
@@ -439,26 +476,65 @@ export function DashboardPage() {
           ))}
         </PanelList>
       </div>
+    ),
 
-      {/* Alerta de conflito com o calendario contabil */}
-      {(conflictsQuery.data ?? []).length > 0 && (
-        <section className="mt-3 card border-warn/40 p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-warn" />
-            <h2 className="text-sm font-semibold">Entregas em janela critica da Contabilidade</h2>
+    alerta_calendario: (conflictsQuery.data ?? []).length > 0 ? (
+      <section className="card border-warn/40 p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-warn" />
+          <h2 className="text-sm font-semibold">Entregas em janela critica da Contabilidade</h2>
+        </div>
+        <ul className="divide-y divide-border">
+          {(conflictsQuery.data ?? []).slice(0, 5).map((c) => (
+            <li key={`${c.milestone_id}-${c.event_id}`} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+              <Link to={`/projetos/${c.project_id}`} className="font-medium text-brand hover:underline">{c.project_code}</Link>
+              <span className="text-fg">{c.milestone_name}</span>
+              <span className="text-muted">em {formatDate(c.due_date)}</span>
+              <Badge tone={c.is_freeze ? 'danger' : 'warn'}>{c.event_name}</Badge>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null,
+  };
+
+  const visibleWidgets = resolvedOrder.filter((id) => !hiddenWidgets.has(id) && widgetNodes[id] != null);
+
+  return (
+    <>
+      <PageHeader
+        title="Visao Executiva"
+        description="Leitura consolidada do portfolio da Contabilidade. Clique nos indicadores para abrir os registros que os compoem."
+        actions={
+          <div className="flex items-center gap-3">
+            {kpis.lastUpdateAt && (
+              <span className="text-xs text-muted">
+                Ultima atualizacao do portfolio: {relativeFromNow(kpis.lastUpdateAt)}
+              </span>
+            )}
+            <Button
+              variant="secondary" size="sm" onClick={() => setCustomizing(true)}
+              icon={<SlidersHorizontal className="h-3.5 w-3.5" />}
+            >
+              Personalizar
+            </Button>
           </div>
-          <ul className="divide-y divide-border">
-            {(conflictsQuery.data ?? []).slice(0, 5).map((c) => (
-              <li key={`${c.milestone_id}-${c.event_id}`} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <Link to={`/projetos/${c.project_id}`} className="font-medium text-brand hover:underline">{c.project_code}</Link>
-                <span className="text-fg">{c.milestone_name}</span>
-                <span className="text-muted">em {formatDate(c.due_date)}</span>
-                <Badge tone={c.is_freeze ? 'danger' : 'warn'}>{c.event_name}</Badge>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        }
+      />
+
+      {visibleWidgets.map((id, index) => (
+        <div key={id} className={index === 0 ? '' : 'mt-3'}>{widgetNodes[id]}</div>
+      ))}
+
+      <DashboardCustomizeModal
+        open={customizing}
+        onClose={() => setCustomizing(false)}
+        order={resolvedOrder}
+        hidden={[...hiddenWidgets]}
+        onSave={(order, hidden) => saveLayout.mutate({ order, hidden })}
+        onReset={() => resetLayout.mutate()}
+        saving={saveLayout.isPending}
+      />
     </>
   );
 }
@@ -487,4 +563,3 @@ function PanelList({
     </section>
   );
 }
-
