@@ -231,9 +231,15 @@ não basta salvar no GitHub.
 
 **MFA.** TOTP (aplicativo autenticador) habilitado nos dois ambientes — feito manualmente pelo
 Admin em cada projeto (`Authentication → Multi-Factor Authentication`, sem sincronização
-automática entre QA e PRD, mesmo padrão do SMTP). Isso destrava a capacidade no backend, mas
-sozinho não é usável: a interface do ProjectHub ainda não tem tela de cadastro de fator (QR
-code) nem desafio de segundo fator no login — ver pendência em "Pendências conhecidas".
+automática entre QA e PRD, mesmo padrão do SMTP). A interface está implementada: em
+`Configurações → Meu perfil`, o usuário ativa o segundo fator (QR code + segredo manual,
+confirmação por código de 6 dígitos) ou desativa um fator já verificado, ambos via
+`src/services/mfa.ts` (wrapper sobre `supabase.auth.mfa.*`). No login, o `AuthProvider` recalcula
+`mfaPending` a cada mudança de sessão (`currentLevel === 'aal1' && nextLevel === 'aal2'`); o
+`ProtectedRoute` redireciona para `/mfa` enquanto o desafio não é resolvido, e a tela
+`MfaChallengePage` pede o código do autenticador (com opção de sair, para quem perdeu acesso ao
+app). Um cadastro abandonado (usuário abre o QR code e cancela) é desfeito automaticamente —
+não fica fator não verificado órfão no Supabase Auth.
 
 **SMTP próprio.** Os dois ambientes enviam e-mail de autenticação via Resend, a partir do
 domínio corporativo `mail.contabilidade-eqtl.com` (DKIM/SPF verificados), em vez do e-mail
@@ -415,7 +421,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 |---|---|---|
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
-| MFA — interface | TOTP habilitado no Supabase Auth (QA e PRD, `Authentication → Multi-Factor Authentication`) | Cadastro de fator (QR code) e desafio de segundo fator no login — sem isso o toggle fica ligado mas inerte, ninguém consegue usar |
 
 ## Riscos técnicos a acompanhar
 

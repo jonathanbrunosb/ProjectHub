@@ -37,6 +37,10 @@ import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
+import {
+  enrollTotpFactor, listVerifiedTotpFactors, unenrollMfaFactor, verifyTotpEnrollment,
+  type MfaFactor, type TotpEnrollment,
+} from '@/services/mfa';
 import { financialModeLabel, roleDescription, roleLabel } from '@/utils/domain-labels';
 import { formatDate, formatDateTime } from '@/utils/format';
 import type {
@@ -99,7 +103,7 @@ export function SettingsPage() {
 }
 
 // ---------------------------------------------------------------------------
-function ProfileTab() {
+export function ProfileTab() {
   const { profile, refreshProfile } = useAuth();
   const toast = useToast();
   const [form, setForm] = useState({
@@ -131,48 +135,167 @@ function ProfileTab() {
   if (!profile) return <Spinner />;
 
   return (
-    <div className="card max-w-2xl p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <AvatarWithName name={profile.full_name} subtitle={profile.email} />
-        <Badge tone="brand">{roleLabel[profile.role]}</Badge>
+    <>
+      <div className="card max-w-2xl p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <AvatarWithName name={profile.full_name} subtitle={profile.email} />
+          <Badge tone="brand">{roleLabel[profile.role]}</Badge>
+        </div>
+        <p className="mb-4 rounded-lg bg-surface-2 p-3 text-xs text-muted">
+          {roleDescription[profile.role]} O papel de acesso so pode ser alterado por um Administrador -
+          a regra e aplicada no banco, nao apenas na interface.
+        </p>
+
+        <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm">
+          <p className="text-xs font-semibold text-muted">Area organizacional</p>
+          {profile.role === 'pmo' ? (
+            <p className="mt-0.5">Todas as areas <span className="text-xs text-muted">· acesso corporativo de PMO / Gerencia</span></p>
+          ) : myArea ? (
+            <p className="mt-0.5">{myArea.name} <span className="text-xs text-muted">· {myArea.business_unit?.name ?? '—'}</span></p>
+          ) : (
+            <p className="mt-0.5 text-xs text-muted">Nao vinculada - fale com o Admin, PMO ou Sponsor.</p>
+          )}
+          <p className="mt-1 text-xs text-muted">
+            {profile.role === 'pmo'
+              ? 'Abrangencia definida pelo perfil de acesso, sem vinculo a uma Area principal.'
+              : 'Alterada apenas por quem gerencia usuarios, em Configuracoes.'}
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nome completo" required className="sm:col-span-2">
+            <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
+          </Field>
+          <Field label="Cargo">
+            <Input value={form.job_title} onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))} />
+          </Field>
+          <Field label="Capacidade semanal (horas)" hint="Base do calculo de capacidade e sobrecarga.">
+            <Input type="number" min="0" max="80" value={form.weekly_capacity_hours}
+              onChange={(e) => setForm((f) => ({ ...f, weekly_capacity_hours: e.target.value }))} />
+          </Field>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+        </div>
       </div>
-      <p className="mb-4 rounded-lg bg-surface-2 p-3 text-xs text-muted">
-        {roleDescription[profile.role]} O papel de acesso so pode ser alterado por um Administrador -
-        a regra e aplicada no banco, nao apenas na interface.
+      <SecurityCard />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+function SecurityCard() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
+  const [code, setCode] = useState('');
+  const [removing, setRemoving] = useState<MfaFactor | null>(null);
+
+  const factors = useQuery({ queryKey: ['mfa-factors'], queryFn: listVerifiedTotpFactors });
+  const active = factors.data?.[0] ?? null;
+
+  const startEnroll = useMutation({
+    mutationFn: enrollTotpFactor,
+    onSuccess: setEnrollment,
+    onError: (e) => toast.error('Nao foi possivel iniciar o cadastro', describeError(e)),
+  });
+
+  const confirmEnroll = useMutation({
+    mutationFn: () => verifyTotpEnrollment(enrollment!.factorId, code.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mfa-factors'] });
+      setEnrollment(null);
+      setCode('');
+      toast.success('Autenticacao em duas etapas ativada');
+    },
+    onError: (e) => toast.error('Codigo invalido ou expirado', describeError(e)),
+  });
+
+  // Fechar o modal (X, backdrop ou "Cancelar") sem confirmar abandona o
+  // cadastro - remove o fator nao verificado em vez de deixar orfao no
+  // Supabase Auth, esperando um codigo que nunca vai chegar.
+  const closeEnrollment = useMutation({
+    mutationFn: () => unenrollMfaFactor(enrollment!.factorId),
+    onSettled: () => { setEnrollment(null); setCode(''); },
+  });
+
+  const remove = useMutation({
+    mutationFn: (f: MfaFactor) => unenrollMfaFactor(f.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mfa-factors'] });
+      setRemoving(null);
+      toast.success('Autenticacao em duas etapas desativada');
+    },
+    onError: (e) => toast.error('Nao foi possivel desativar', describeError(e)),
+  });
+
+  return (
+    <div className="card mt-4 max-w-2xl p-5">
+      <h2 className="mb-1 text-sm font-semibold">Autenticacao em duas etapas</h2>
+      <p className="mb-4 text-xs text-muted">
+        Exige um codigo do seu aplicativo autenticador (Google Authenticator, Authy, 1Password...),
+        alem da senha, para entrar na plataforma.
       </p>
 
-      <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm">
-        <p className="text-xs font-semibold text-muted">Area organizacional</p>
-        {profile.role === 'pmo' ? (
-          <p className="mt-0.5">Todas as areas <span className="text-xs text-muted">· acesso corporativo de PMO / Gerencia</span></p>
-        ) : myArea ? (
-          <p className="mt-0.5">{myArea.name} <span className="text-xs text-muted">· {myArea.business_unit?.name ?? '—'}</span></p>
-        ) : (
-          <p className="mt-0.5 text-xs text-muted">Nao vinculada - fale com o Admin, PMO ou Sponsor.</p>
+      {factors.isLoading ? (
+        <Spinner />
+      ) : active ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 p-3">
+          <span className="flex items-center gap-2 text-sm">
+            <ShieldCheck className="h-4 w-4 text-ok" />
+            Ativa desde {formatDate(active.created_at)}
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setRemoving(active)}>Desativar</Button>
+        </div>
+      ) : (
+        <Button variant="secondary" onClick={() => startEnroll.mutate()} loading={startEnroll.isPending}>
+          Ativar autenticacao em duas etapas
+        </Button>
+      )}
+
+      <Modal
+        open={Boolean(enrollment)}
+        onClose={() => closeEnrollment.mutate()}
+        title="Ativar autenticacao em duas etapas"
+        description="Escaneie o QR code com seu aplicativo autenticador e digite o codigo gerado para confirmar."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => closeEnrollment.mutate()} loading={closeEnrollment.isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={() => confirmEnroll.mutate()} loading={confirmEnroll.isPending} disabled={code.trim().length < 6}>
+              Confirmar
+            </Button>
+          </>
+        }
+      >
+        {enrollment && (
+          <div className="space-y-4">
+            <img src={enrollment.qrCode} alt="QR code para o aplicativo autenticador" className="mx-auto h-40 w-40" />
+            <Field label="Nao consegue escanear? Digite o codigo manualmente" hint="Cadastre como uma conta TOTP no aplicativo.">
+              <Input readOnly value={enrollment.secret} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+            </Field>
+            <Field label="Codigo de confirmacao" required hint="Digite o codigo de 6 digitos atual do aplicativo.">
+              <Input
+                inputMode="numeric" autoComplete="one-time-code" autoFocus
+                value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" maxLength={6}
+              />
+            </Field>
+          </div>
         )}
-        <p className="mt-1 text-xs text-muted">
-          {profile.role === 'pmo'
-            ? 'Abrangencia definida pelo perfil de acesso, sem vinculo a uma Area principal.'
-            : 'Alterada apenas por quem gerencia usuarios, em Configuracoes.'}
-        </p>
-      </div>
+      </Modal>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Nome completo" required className="sm:col-span-2">
-          <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
-        </Field>
-        <Field label="Cargo">
-          <Input value={form.job_title} onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))} />
-        </Field>
-        <Field label="Capacidade semanal (horas)" hint="Base do calculo de capacidade e sobrecarga.">
-          <Input type="number" min="0" max="80" value={form.weekly_capacity_hours}
-            onChange={(e) => setForm((f) => ({ ...f, weekly_capacity_hours: e.target.value }))} />
-        </Field>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
-      </div>
+      <ConfirmDialog
+        open={Boolean(removing)}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => removing && remove.mutate(removing)}
+        loading={remove.isPending}
+        title="Desativar autenticacao em duas etapas"
+        confirmLabel="Desativar"
+        description="Sua conta volta a exigir so a senha para entrar. Voce pode reativar quando quiser."
+      />
     </div>
   );
 }
