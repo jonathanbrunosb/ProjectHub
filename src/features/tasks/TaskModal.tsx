@@ -11,13 +11,14 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/app/AuthProvider';
 import { describeError } from '@/lib/supabase/client';
 import {
-  createTask, deleteTask, listTaskCorresponsibles, nextTaskCode, replaceTaskCorresponsibles, updateTask,
+  createTask, deleteTask, listTaskCorresponsibles, listTaskOptions, listTaskPredecessors, listTaskSuccessors,
+  nextTaskCode, replaceTaskCorresponsibles, replaceTaskPredecessors, updateTask,
   type TaskWithContext,
 } from '@/services/tasks';
 import { listProjectMembers } from '@/services/projects';
 import { getProjectGoalSettings, listTaskGoalConfigs, upsertTaskGoalConfig } from '@/services/goalIndicators';
-import { priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
-import type { Priority, TaskStatus } from '@/types/domain';
+import { dependencyTypeLabel, priorityLabel, taskStatusLabel } from '@/utils/domain-labels';
+import type { DependencyType, Priority, TaskStatus } from '@/types/domain';
 
 interface Props {
   open: boolean;
@@ -93,6 +94,24 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
   }, [assignees, form.assignee_id, responsibleRows]);
   const rateio = percentSum(responsibleRows.length > 0 ? [{ profile_id: 'assignee', percent: form.assignee_allocation_percent }, ...responsibleRows] : []);
 
+  // Predecessora/sucessora - so' faz sentido para uma tarefa ja salva
+  // (task_dependencies referencia successor_id). O grafo aciclico e' garantido
+  // pelo gatilho `trg_task_dependencies_guard` no banco, nao so' na UI.
+  const taskOptions = useQuery({
+    queryKey: ['task-options', projectId], queryFn: () => listTaskOptions(projectId), enabled: open,
+  });
+  const predecessors = useQuery({
+    queryKey: ['task-predecessors', task?.id], queryFn: () => listTaskPredecessors(task!.id), enabled: open && Boolean(task),
+  });
+  const successors = useQuery({
+    queryKey: ['task-successors', task?.id], queryFn: () => listTaskSuccessors(task!.id), enabled: open && Boolean(task),
+  });
+  const [dependencyRows, setDependencyRows] = useState<{ predecessor_id: string; dependency_type: DependencyType; lag_days: string }[]>([]);
+  const candidateDependencies = useMemo(() => {
+    const used = new Set([task?.id, ...dependencyRows.map((r) => r.predecessor_id)]);
+    return (taskOptions.data ?? []).filter((t) => !used.has(t.id));
+  }, [taskOptions.data, task?.id, dependencyRows]);
+
   useEffect(() => {
     if (!open) return;
     if (task) {
@@ -133,6 +152,13 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       profile_id: c.profile_id, percent: c.allocation_percent != null ? String(c.allocation_percent) : '',
     })));
   }, [open, task, corresponsibles.data]);
+
+  useEffect(() => {
+    if (!open || !task) { setDependencyRows([]); return; }
+    setDependencyRows((predecessors.data ?? []).map((d) => ({
+      predecessor_id: d.predecessor_id, dependency_type: d.dependency_type as DependencyType, lag_days: String(d.lag_days),
+    })));
+  }, [open, task, predecessors.data]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -184,6 +210,14 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
         })));
       }
 
+      if (task) {
+        await replaceTaskPredecessors(task.id, dependencyRows.map((row) => ({
+          predecessor_id: row.predecessor_id,
+          dependency_type: row.dependency_type,
+          lag_days: Number(row.lag_days) || 0,
+        })));
+      }
+
       if (task && showGoalField) {
         await upsertTaskGoalConfig({
           task_id: task.id, included: goalForm.included, weight: Number(goalForm.goalWeight) || 0,
@@ -196,6 +230,9 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
       queryClient.invalidateQueries({ queryKey: ['goal-indicator'] });
       queryClient.invalidateQueries({ queryKey: ['task-corresponsibles'] });
       queryClient.invalidateQueries({ queryKey: ['task-planned-allocation'] });
+      queryClient.invalidateQueries({ queryKey: ['task-predecessors'] });
+      queryClient.invalidateQueries({ queryKey: ['task-successors'] });
+      queryClient.invalidateQueries({ queryKey: ['dependencies'] });
       // Faltava isto: sem invalidar, reabrir o mesmo drawer mostrava o valor
       // antigo em cache do checkbox/peso, dando a impressao de que nao salvou.
       queryClient.invalidateQueries({ queryKey: ['goal-config'] });
@@ -347,6 +384,68 @@ export function TaskModal({ open, onClose, projectId, task, canEdit }: Props) {
                 {rateio.state === 'partial' && 'Preencha o percentual de todos os responsaveis (ou deixe todos em branco).'}
                 {rateio.state === 'complete' && `Total: ${rateio.sum.toFixed(1)}%${rateio.valid ? '' : ' - deve somar 100%'}`}
               </p>
+            </div>
+          )}
+
+          {task && (
+            <div className="sm:col-span-2 rounded-lg border border-border p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-medium">Dependencias (predecessoras)</p>
+                {candidateDependencies.length > 0 && (
+                  <Button
+                    type="button" size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />}
+                    onClick={() => setDependencyRows((rows) => [
+                      ...rows, { predecessor_id: candidateDependencies[0].id, dependency_type: 'FS', lag_days: '0' },
+                    ])}
+                  >
+                    Adicionar dependencia
+                  </Button>
+                )}
+              </div>
+              {dependencyRows.length === 0 ? (
+                <p className="text-xs text-muted">Sem predecessora - a tarefa nao depende de nenhuma outra.</p>
+              ) : (
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 text-sm">
+                  {dependencyRows.map((row, index) => {
+                    const current = taskOptions.data?.find((t) => t.id === row.predecessor_id);
+                    return (
+                      <div key={`${row.predecessor_id}-${index}`} className="contents">
+                        <Select
+                          aria-label="Tarefa predecessora"
+                          className="min-w-0"
+                          value={row.predecessor_id}
+                          onChange={(e) => setDependencyRows((rows) => rows.map((r, i) => (i === index ? { ...r, predecessor_id: e.target.value } : r)))}
+                        >
+                          {current && <option value={current.id}>{current.code} · {current.title}</option>}
+                          {candidateDependencies.map((t) => <option key={t.id} value={t.id}>{t.code} · {t.title}</option>)}
+                        </Select>
+                        <Select
+                          aria-label="Tipo de dependencia" className="w-40"
+                          value={row.dependency_type}
+                          onChange={(e) => setDependencyRows((rows) => rows.map((r, i) => (i === index ? { ...r, dependency_type: e.target.value as DependencyType } : r)))}
+                        >
+                          {Object.entries(dependencyTypeLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </Select>
+                        <Input
+                          aria-label="Defasagem (dias)" type="number" step="1" className="w-20"
+                          value={row.lag_days}
+                          onChange={(e) => setDependencyRows((rows) => rows.map((r, i) => (i === index ? { ...r, lag_days: e.target.value } : r)))}
+                        />
+                        <Button
+                          type="button" size="icon" variant="ghost" aria-label="Remover dependencia"
+                          onClick={() => setDependencyRows((rows) => rows.filter((_, i) => i !== index))}
+                        ><X className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {(successors.data?.length ?? 0) > 0 && (
+                <p className="mt-2.5 border-t border-border pt-2 text-xs text-muted">
+                  Bloqueia: {successors.data!.map((d) => d.successor ? `${d.successor.code} · ${d.successor.title}` : '—').join(', ')}
+                  {' '}(edite a dependencia a partir da outra tarefa)
+                </p>
+              )}
             </div>
           )}
 

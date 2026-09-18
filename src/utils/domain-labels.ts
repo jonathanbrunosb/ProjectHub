@@ -1,5 +1,5 @@
 import type {
-  ActionStatus, CalendarWindowKind, DecisionStatus, FinancialModuleMode, GoalDayBasis, GoalWeightMode,
+  ActionStatus, CalendarWindowKind, DecisionStatus, DependencyType, FinancialModuleMode, GoalDayBasis, GoalWeightMode,
   Health, Priority, ProjectStatus, RiskCriticality, RiskStatus, RiskStrategy, RoleKey, TaskStatus,
   AuditAction, StatusReportState,
 } from '@/types/domain';
@@ -20,6 +20,11 @@ export const healthLabel: Record<Health, string> = {
 
 export const healthTone: Record<Health, Tone> = {
   verde: 'ok', amarelo: 'warn', vermelho: 'danger', cinza: 'neutral',
+};
+
+/** FS = termino-inicio (padrao), SS = inicio-inicio, FF = termino-termino, SF = inicio-termino. */
+export const dependencyTypeLabel: Record<DependencyType, string> = {
+  FS: 'Termino → Inicio', SS: 'Inicio → Inicio', FF: 'Termino → Termino', SF: 'Inicio → Termino',
 };
 
 export const projectStatusLabel: Record<ProjectStatus, string> = {
