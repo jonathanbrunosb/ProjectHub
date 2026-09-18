@@ -1,25 +1,30 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Plus, Send, FileText, Gavel } from 'lucide-react';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Plus, Send, FileText, Gavel, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Badge, type Tone } from '@/components/ui/Badge';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Drawer, Modal } from '@/components/ui/Modal';
 import { Field, Input, Select, Textarea } from '@/components/ui/Input';
 import { EmptyState, Spinner } from '@/components/ui/Feedback';
 import { DecisionStatusBadge, HealthBadge } from '@/components/ui/StatusBadges';
+import { KpiCard, type KpiCardProps } from '@/components/ui/KpiCard';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { ChartTooltip } from '@/components/charts/ChartTooltip';
 import { chartColors } from '@/components/charts/chartTheme';
 import { useToast } from '@/components/ui/Toast';
 import { describeError } from '@/lib/supabase/client';
+import { cn } from '@/utils/cn';
 import {
-  createStatusReport, listDecisions, listIndicators, listMeasurements, listStatusReports,
-  nextDecisionCode, publishStatusReport, upsertDecision, upsertIndicator, updateStatusReport,
+  createStatusReport, deleteEvmSnapshot, listDecisions, listEvmSnapshots, listIndicators,
+  listMeasurements, listStatusReports, nextDecisionCode, publishStatusReport, upsertDecision,
+  upsertEvmSnapshot, upsertIndicator, updateStatusReport,
 } from '@/services/governance';
 import { listActiveProfiles } from '@/services/projects';
-import { formatDate, formatDateTime, formatNumber, formatPercent, toISODate } from '@/utils/format';
+import { formatCurrency, formatCurrencyCompact, formatDate, formatDateTime, formatNumber, formatPercent, toISODate } from '@/utils/format';
 import { decisionStatusLabel, statusReportStateLabel, statusReportStateTone } from '@/utils/domain-labels';
-import type { Decision, Indicator, StatusReport } from '@/types/domain';
+import type { Decision, EvmSnapshot, Indicator, StatusReport } from '@/types/domain';
 
 // ---------------------------------------------------------------------------
 // Decisoes & Aprovacoes
@@ -253,13 +258,7 @@ export function IndicatorsTab({ projectId, canEdit, evmEnabled }: { projectId: s
         </div>
       )}
 
-      {evmEnabled && (
-        <div className="card border-strategic/40 p-3.5 text-sm">
-          <b>Earned Value habilitado</b> para este projeto. Os snapshots de PV, EV, AC, SPI e CPI
-          sao registrados na tabela <code className="font-mono text-xs">evm_snapshots</code> e ficam
-          disponiveis para o Status Report e para o Steering Committee.
-        </div>
-      )}
+      {evmEnabled && <EvmPanel projectId={projectId} canEdit={canEdit} />}
 
       {(indicators.data ?? []).length === 0 ? (
         <EmptyState title="Nenhum indicador cadastrado" description="Indicadores customizaveis permitem acompanhar meta, realizado, tendencia e semaforo por projeto." />
@@ -369,6 +368,221 @@ export function IndicatorsTab({ projectId, canEdit, evmEnabled }: { projectId: s
         </div>
       </Modal>
     </div>
+  );
+}
+
+/** Abaixo de 1: atrasado (SPI) ou acima do custo (CPI) - entre 0.9 e 1: atencao. Convencao usual de EVM. */
+function evmIndexTone(v: number | null): 'ok' | 'warn' | 'danger' | null {
+  if (v == null) return null;
+  if (v < 0.9) return 'danger';
+  if (v < 1) return 'warn';
+  return 'ok';
+}
+
+const blankEvmForm = { reference_date: toISODate(new Date()), pv: '', ev: '', ac: '' };
+
+function EvmPanel({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const colors = chartColors();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<EvmSnapshot | null>(null);
+  const [removing, setRemoving] = useState<EvmSnapshot | null>(null);
+  const [form, setForm] = useState(blankEvmForm);
+
+  const snapshots = useQuery({ queryKey: ['evm', projectId], queryFn: () => listEvmSnapshots(projectId) });
+  const list = snapshots.data ?? [];
+  const latest = list[list.length - 1] ?? null;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.reference_date) throw new Error('Informe a data de referencia.');
+      await upsertEvmSnapshot({
+        project_id: projectId,
+        reference_date: form.reference_date,
+        pv: Number(form.pv) || 0,
+        ev: Number(form.ev) || 0,
+        ac: Number(form.ac) || 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['evm', projectId] });
+      toast.success('Snapshot de EVM salvo');
+      setOpen(false);
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const remove = useMutation({
+    mutationFn: (s: EvmSnapshot) => deleteEvmSnapshot(s.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['evm', projectId] });
+      setRemoving(null);
+      toast.success('Snapshot excluido');
+    },
+    onError: (e) => toast.error('Nao foi possivel excluir', describeError(e)),
+  });
+
+  function openNew() {
+    setEditing(null);
+    setForm(blankEvmForm);
+    setOpen(true);
+  }
+  function openEdit(s: EvmSnapshot) {
+    setEditing(s);
+    setForm({ reference_date: s.reference_date, pv: String(s.pv), ev: String(s.ev), ac: String(s.ac) });
+    setOpen(true);
+  }
+
+  function kpiTone(v: number | null): KpiCardProps['tone'] {
+    return evmIndexTone(v) ?? 'default';
+  }
+  function badgeTone(v: number | null): Tone {
+    return evmIndexTone(v) ?? 'neutral';
+  }
+
+  return (
+    <section className="space-y-3 border-t border-border pt-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">Earned Value Management</h3>
+          <p className="text-xs text-muted">
+            Snapshots de PV, EV e AC por data de referencia - SPI e CPI sao calculados automaticamente.
+          </p>
+        </div>
+        {canEdit && (
+          <Button size="sm" onClick={openNew} icon={<Plus className="h-3.5 w-3.5" />}>Novo snapshot</Button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <KpiCard label="PV - Planejado" value={formatCurrencyCompact(latest?.pv)} hint={formatCurrency(latest?.pv)} />
+        <KpiCard label="EV - Agregado" value={formatCurrencyCompact(latest?.ev)} hint={formatCurrency(latest?.ev)} />
+        <KpiCard label="AC - Custo real" value={formatCurrencyCompact(latest?.ac)} hint={formatCurrency(latest?.ac)} />
+        <KpiCard
+          label="SPI" value={latest?.spi != null ? formatNumber(latest.spi, 2) : '—'}
+          tone={kpiTone(latest?.spi ?? null)}
+          hint="Schedule Performance Index (EV/PV). Abaixo de 1: cronograma atrasado."
+        />
+        <KpiCard
+          label="CPI" value={latest?.cpi != null ? formatNumber(latest.cpi, 2) : '—'}
+          tone={kpiTone(latest?.cpi ?? null)}
+          hint="Cost Performance Index (EV/AC). Abaixo de 1: acima do custo planejado."
+        />
+      </div>
+
+      <ChartCard
+        title="Curva de Earned Value"
+        description="PV, EV e AC por data de referencia"
+        loading={snapshots.isLoading}
+        empty={list.length === 0}
+      >
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={list} margin={{ left: 4, right: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+            <XAxis dataKey="reference_date" tickFormatter={(v) => formatDate(v)} tick={{ fontSize: 10, fill: colors.muted }} />
+            <YAxis tickFormatter={(v) => formatCurrencyCompact(v).replace('R$ ', '')} tick={{ fontSize: 11, fill: colors.muted }} width={56} />
+            <Tooltip content={<ChartTooltip formatter={(v) => formatCurrency(v)} />} labelFormatter={(v) => formatDate(String(v))} />
+            <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-muted">{v}</span>} />
+            <Line dataKey="pv" name="PV" stroke={colors.muted} strokeWidth={2} dot={{ r: 2 }} />
+            <Line dataKey="ev" name="EV" stroke={colors.brand} strokeWidth={2} dot={{ r: 2 }} />
+            <Line dataKey="ac" name="AC" stroke={colors.danger} strokeWidth={2} dot={{ r: 2 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className="bg-surface-2">
+            <tr>
+              {['Data', 'PV', 'EV', 'AC', 'SPI', 'CPI', ''].map((h) => (
+                <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-muted">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((s) => (
+              <tr
+                key={s.id}
+                className={cn('border-t border-border', canEdit && 'cursor-pointer hover:bg-surface-2')}
+                onClick={() => canEdit && openEdit(s)}
+              >
+                <td className="px-3 py-2">{formatDate(s.reference_date)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatCurrency(s.pv)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatCurrency(s.ev)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatCurrency(s.ac)}</td>
+                <td className="px-3 py-2"><Badge tone={badgeTone(s.spi)}>{s.spi != null ? formatNumber(s.spi, 2) : '—'}</Badge></td>
+                <td className="px-3 py-2"><Badge tone={badgeTone(s.cpi)}>{s.cpi != null ? formatNumber(s.cpi, 2) : '—'}</Badge></td>
+                <td className="px-3 py-2 text-right">
+                  {canEdit && (
+                    <Button
+                      variant="ghost" size="icon" aria-label="Excluir snapshot"
+                      onClick={(e) => { e.stopPropagation(); setRemoving(s); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {list.length === 0 && (
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState
+                    title="Nenhum snapshot de EVM registrado"
+                    description={canEdit ? 'Registre PV, EV e AC para uma data de referencia.' : undefined}
+                  />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editing ? 'Editar snapshot de EVM' : 'Novo snapshot de EVM'}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={() => save.mutate()} loading={save.isPending}>Salvar</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field
+            label="Data de referencia" required
+            hint={editing ? 'A data nao e editavel - exclua e crie um novo snapshot para mudar a data.' : 'Reenviar a mesma data corrige o snapshot existente.'}
+          >
+            <Input
+              type="date" value={form.reference_date} disabled={Boolean(editing)}
+              onChange={(e) => setForm((f) => ({ ...f, reference_date: e.target.value }))}
+            />
+          </Field>
+          <Field label="PV - Planned Value (R$)" required hint="Valor planejado ate a data de referencia.">
+            <Input type="number" min="0" step="0.01" value={form.pv} onChange={(e) => setForm((f) => ({ ...f, pv: e.target.value }))} />
+          </Field>
+          <Field label="EV - Earned Value (R$)" required hint="Valor agregado (fisico) ate a data de referencia.">
+            <Input type="number" min="0" step="0.01" value={form.ev} onChange={(e) => setForm((f) => ({ ...f, ev: e.target.value }))} />
+          </Field>
+          <Field label="AC - Actual Cost (R$)" required hint="Custo real incorrido ate a data de referencia.">
+            <Input type="number" min="0" step="0.01" value={form.ac} onChange={(e) => setForm((f) => ({ ...f, ac: e.target.value }))} />
+          </Field>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(removing)}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => removing && remove.mutate(removing)}
+        loading={remove.isPending}
+        title="Excluir snapshot de EVM"
+        confirmLabel="Excluir"
+        description={<>O snapshot de <b>{removing && formatDate(removing.reference_date)}</b> sera removido permanentemente.</>}
+      />
+    </section>
   );
 }
 

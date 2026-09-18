@@ -66,7 +66,7 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 267 testes de frontend (Vitest + Testing Library)
+npm run test                # 274 testes de frontend (Vitest + Testing Library)
 ./supabase/tests/run.sh     # 140 asserções no banco (48 RLS + 76 regras + 16 ambiente)
 ```
 
@@ -363,6 +363,24 @@ tabela só era alimentada pela importação (dados controlados):**
 Gatilho `trg_task_dependencies_guard` (BEFORE INSERT/UPDATE) fecha as duas, com uma CTE
 recursiva para detectar alcançabilidade antes de aceitar a nova aresta.
 
+## EVM (Earned Value Management)
+
+Opcional por projeto (`projects.evm_enabled`). Quando ativo, a aba **Indicadores** ganha um
+painel de captura de snapshots (`public.evm_snapshots`): PV, EV e AC por data de referência,
+com SPI (`EV/PV`) e CPI (`EV/AC`) calculados pelo próprio banco (colunas geradas — nunca
+enviados pelo frontend). Curva PV × EV × AC e cartões de KPI com semáforo (`< 0,9` crítico,
+`0,9–1` atenção, `≥ 1` ok — convenção usual de EVM).
+
+- **Reenviar a mesma data corrige o snapshot** (`upsert` com `onConflict` em
+  `(project_id, reference_date)`, mesma restrição `evm_snapshots_uk` da `0007`) — não duplica,
+  não exige excluir para corrigir um valor digitado errado.
+- **A data de um snapshot existente não é editável** pela tela: só PV/EV/AC. Mudar a data via
+  `upsert` criaria/atualizaria outra linha e deixaria a original órfã — mais simples travar o
+  campo do que reconciliar esse caso.
+- **RLS:** `evm_snapshots` já estava no loop genérico de tabela-filha da `0011`
+  (`can_read_project`/`can_write_project`) desde a `0007` — nenhuma migration nova foi
+  necessária, só a interface que faltava.
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -391,7 +409,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Edge Functions de integração | `admin-create-user` implementada (cadastro de usuário pelo Admin) | Teams, Power BI, webhooks ainda pendentes |
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
-| EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
 
 ## Riscos técnicos a acompanhar
 

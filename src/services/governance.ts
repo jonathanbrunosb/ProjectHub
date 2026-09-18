@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import type {
-  AuditLogEntry, CalendarConflict, CriticalCalendarEvent, Decision, Indicator,
+  AuditLogEntry, CalendarConflict, CriticalCalendarEvent, Decision, EvmSnapshot, Indicator,
   IndicatorMeasurement, LegacyAllocationComparison, Notification, ResourceCapacity, StatusReport,
   TaskPlannedAllocationRow,
 } from '@/types/domain';
@@ -73,6 +73,36 @@ export async function upsertIndicator(input: Partial<Indicator> & { name: string
   const { error } = input.id
     ? await supabase.from('indicators').update(input).eq('id', input.id)
     : await supabase.from('indicators').insert(input);
+  if (error) throw error;
+}
+
+// --- Earned Value Management (EVM) -------------------------------------------
+export async function listEvmSnapshots(projectId: string): Promise<EvmSnapshot[]> {
+  const { data, error } = await supabase
+    .from('evm_snapshots')
+    .select('id,project_id,reference_date,pv,ev,ac,spi,cpi')
+    .eq('project_id', projectId)
+    .order('reference_date');
+  if (error) throw error;
+  return (data ?? []) as unknown as EvmSnapshot[];
+}
+
+/**
+ * `onConflict` em (project_id, reference_date) - reenviar a mesma data
+ * corrige o snapshot em vez de falhar em `evm_snapshots_uk`. spi/cpi sao
+ * colunas geradas (ev/pv, ev/ac): nunca fazem parte do payload de escrita.
+ */
+export async function upsertEvmSnapshot(input: {
+  project_id: string; reference_date: string; pv: number; ev: number; ac: number;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('evm_snapshots')
+    .upsert(input, { onConflict: 'project_id,reference_date' });
+  if (error) throw error;
+}
+
+export async function deleteEvmSnapshot(id: string): Promise<void> {
+  const { error } = await supabase.from('evm_snapshots').delete().eq('id', id);
   if (error) throw error;
 }
 
