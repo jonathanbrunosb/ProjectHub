@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
   Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet, CalendarDays,
-  Building2, Link2, Users,
+  Building2, Link2, Users, Webhook, Send, Eye, EyeOff,
 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -34,6 +34,7 @@ import {
   setBusinessUnitActive, updateArea, updateBusinessUnit, type AreaWithRelations,
 } from '@/services/areas';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
+import { getWebhookConfig, saveWebhookConfig, testWebhookDelivery } from '@/services/webhooks';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
@@ -56,6 +57,7 @@ const TABS = [
   { key: 'gerencias', label: 'Gerencias' },
   { key: 'areas', label: 'Areas' },
   { key: 'modulos', label: 'Modulos' },
+  { key: 'integracoes', label: 'Integracoes' },
   { key: 'sistema', label: 'Sistema' },
 ];
 
@@ -73,7 +75,7 @@ export function SettingsPage() {
   ]);
 
   const visible = TABS.filter((t) => {
-    if (t.key === 'usuarios' || t.key === 'sistema') return can('users.manage') || can('settings.manage');
+    if (t.key === 'usuarios' || t.key === 'sistema' || t.key === 'integracoes') return can('users.manage') || can('settings.manage');
     if (t.key === 'campos' || t.key === 'templates' || t.key === 'empresas' || t.key === 'gerencias' || t.key === 'areas') {
       return can('portfolio.manage');
     }
@@ -97,6 +99,7 @@ export function SettingsPage() {
       {tab === 'gerencias' && <GerenciasTab />}
       {tab === 'areas' && <AreasTab />}
       {tab === 'modulos' && <ModulosTab />}
+      {tab === 'integracoes' && <IntegrationsTab />}
       {tab === 'sistema' && <SystemTab />}
     </>
   );
@@ -1874,6 +1877,121 @@ function ModulosTab() {
           </>
         }
       />
+    </div>
+  );
+}
+
+export function IntegrationsTab() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [showSecret, setShowSecret] = useState(false);
+  const [form, setForm] = useState({ url: '', secret: '', enabled: false });
+  const [dirty, setDirty] = useState(false);
+
+  const query = useQuery({ queryKey: ['webhook-config'], queryFn: getWebhookConfig });
+
+  useEffect(() => {
+    if (!query.data || dirty) return;
+    setForm({ url: query.data.url ?? '', secret: query.data.secret ?? '', enabled: query.data.enabled });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query.data]);
+
+  const save = useMutation({
+    mutationFn: () => saveWebhookConfig(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['webhook-config'] });
+      setDirty(false);
+      toast.success('Webhook salvo', 'A configuracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const test = useMutation({
+    mutationFn: testWebhookDelivery,
+    onSuccess: () => toast.success('Teste enviado', 'Verifique o receptor configurado - o envio e assincrono, sem confirmacao de entrega aqui.'),
+    onError: (e) => toast.error('Nao foi possivel enviar o teste', describeError(e)),
+  });
+
+  if (query.isLoading) return <Spinner />;
+  if (query.isError) return <ErrorState message={describeError(query.error)} />;
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="card p-4 lg:col-span-2">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Webhook className="h-4 w-4" /> Webhook generico
+        </h2>
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          Envia um POST em JSON para a URL configurada a cada notificacao gerada pelo motor de
+          alertas (tarefa vencida, risco critico sem plano, plano de acao vencido). Destrava
+          integracao com Teams (Incoming Webhook), Power BI, Zapier/Make/n8n ou um endpoint
+          proprio, sem depender de cliente nativo por canal. O envio roda dentro do ciclo diario
+          do motor de alertas (ou imediatamente ao testar abaixo) e e assincrono - nao ha
+          confirmacao de entrega nesta tela, so o registro de que foi despachado.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="URL de destino" className="sm:col-span-2">
+            <Input
+              type="url"
+              placeholder="https://exemplo.com/hooks/projecthub"
+              value={form.url}
+              onChange={(e) => { setForm((f) => ({ ...f, url: e.target.value })); setDirty(true); }}
+            />
+          </Field>
+          <Field label="Segredo (assinatura HMAC, opcional)" className="sm:col-span-2">
+            <div className="relative">
+              <Input
+                type={showSecret ? 'text' : 'password'}
+                placeholder="Usado para assinar o payload (X-ProjectHub-Signature)"
+                value={form.secret}
+                onChange={(e) => { setForm((f) => ({ ...f, secret: e.target.value })); setDirty(true); }}
+                className="pr-9"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
+                aria-label={showSecret ? 'Ocultar segredo' : 'Mostrar segredo'}
+              >
+                {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </Field>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-lg bg-surface-2 p-3">
+          <div>
+            <p className="text-sm font-medium">{form.enabled ? 'Ativo' : 'Inativo'}</p>
+            <p className="text-xs text-muted">Notificacoes so sao despachadas com o webhook ativo e uma URL salva.</p>
+          </div>
+          <Button
+            variant={form.enabled ? 'secondary' : 'primary'}
+            size="sm"
+            onClick={() => { setForm((f) => ({ ...f, enabled: !f.enabled })); setDirty(true); }}
+          >
+            {form.enabled ? 'Desativar' : 'Ativar'}
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!dirty}>
+            Salvar
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => test.mutate()}
+            loading={test.isPending}
+            disabled={dirty || !query.data?.url}
+            icon={<Send className="h-4 w-4" />}
+          >
+            Enviar teste
+          </Button>
+        </div>
+        {dirty && (
+          <p className="mt-2 text-xs text-muted">Salve as alteracoes antes de enviar um teste.</p>
+        )}
+      </section>
     </div>
   );
 }

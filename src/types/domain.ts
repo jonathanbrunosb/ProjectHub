@@ -428,6 +428,13 @@ export interface SystemSettings {
   financial_module_enabled: boolean;
 }
 
+/** Configuracao do webhook generico de entrega externa de notificacoes (linha unica). */
+export interface WebhookConfig {
+  url: string | null;
+  secret: string | null;
+  enabled: boolean;
+}
+
 // --- Indicadores de Metas (nota de aderencia a prazo das entregas) ---------
 
 export type GoalDayBasis = 'uteis' | 'corridos';
