@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase, isEnvironmentConfigured } from '@/lib/supabase/client';
 import { useEnvironment } from './EnvironmentProvider';
 import { logAppEvent } from '@/lib/supabase/audit';
+import { getAssuranceLevel, listVerifiedTotpFactors, verifyMfaChallenge } from '@/services/mfa';
 import type { Profile, RoleKey } from '@/types/domain';
 
 interface AuthApi {
@@ -10,6 +11,12 @@ interface AuthApi {
   profile: Profile | null;
   loading: boolean;
   configured: boolean;
+  /**
+   * Sessao autenticada so por senha (AAL1), mas com um fator TOTP verificado
+   * esperando o desafio (AAL2 disponivel) - `ProtectedRoute` bloqueia o
+   * acesso e redireciona para `/mfa` enquanto isso for true.
+   */
+  mfaPending: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   /** Retorna true se a sessao ja veio autenticada (confirmacao de e-mail desligada). */
   signUp: (email: string, password: string, fullName: string) => Promise<{ needsEmailConfirmation: boolean }>;
@@ -18,6 +25,8 @@ interface AuthApi {
   requestPasswordReset: (email: string) => Promise<void>;
   /** Valida o codigo de 6 digitos e ja troca a senha em uma unica chamada. */
   confirmPasswordReset: (email: string, token: string, newPassword: string) => Promise<void>;
+  /** Desafio de segundo fator no login - eleva a sessao de AAL1 para AAL2. */
+  verifyMfa: (code: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** RBAC de interface. A autorizacao real e' aplicada por RLS no PostgreSQL. */
   can: (capability: Capability) => boolean;
@@ -83,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(configured);
+  const [mfaPending, setMfaPending] = useState(false);
 
   useEffect(() => {
     setSession(null);
@@ -127,11 +137,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [session?.user?.id, environment]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Recalcula a cada mudanca de sessao - inclusive apos o desafio de MFA, que
+  // troca os tokens (novo `access_token`) sem trocar `session.user.id`, entao
+  // precisa entrar como dependencia separada do efeito acima.
+  useEffect(() => {
+    if (!session) { setMfaPending(false); return; }
+    let active = true;
+    getAssuranceLevel()
+      .then(({ currentLevel, nextLevel }) => {
+        if (active) setMfaPending(currentLevel === 'aal1' && nextLevel === 'aal2');
+      })
+      .catch(() => { if (active) setMfaPending(false); });
+    return () => { active = false; };
+  }, [session]);
+
   const api = useMemo<AuthApi>(() => ({
     session,
     profile,
     loading,
     configured,
+    mfaPending,
     signIn: async (email, password) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -171,6 +196,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (updateError) throw updateError;
       await logAppEvent('login', 'auth', { data: { via: 'password_reset' } });
     },
+    verifyMfa: async (code) => {
+      const factors = await listVerifiedTotpFactors();
+      const factor = factors[0];
+      if (!factor) throw new Error('Nenhum fator de autenticacao encontrado para esta conta.');
+      await verifyMfaChallenge(factor.id, code);
+      await logAppEvent('login', 'auth', { data: { via: 'mfa' } });
+      setMfaPending(false);
+    },
     refreshProfile: async () => {
       if (!session?.user) return;
       const { data } = await supabase
@@ -182,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     can: (capability) => (profile ? matrix[capability].includes(profile.role) : false),
     hasRole: (...roles) => (profile ? roles.includes(profile.role) : false),
-  }), [session, profile, loading, configured]);
+  }), [session, profile, loading, configured, mfaPending]);
 
   return <AuthContext.Provider value={api}>{children}</AuthContext.Provider>;
 }
