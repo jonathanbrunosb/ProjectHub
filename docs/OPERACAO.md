@@ -400,6 +400,20 @@ enviados pelo frontend). Curva PV × EV × AC e cartões de KPI com semáforo (`
 `automation_rules`: tarefa vencida, risco crítico sem plano, plano de ação vencido.
 `public.refresh_all_health()` recalcula a saúde do portfólio preservando overrides.
 
+**Critério de elegibilidade e visibilidade.** Para a regra "tarefa vencida" (mesmo
+princípio nas outras duas): a tarefa precisa ter `assignee_id`, `due_date` estritamente
+anterior a hoje (`<`, não `<=` — vencendo hoje ainda não conta) e status fora de
+`concluida`/`cancelada`. A deduplicação é **por entidade** (`notifications.entity_id`,
+desde `20260919140000`): cada tarefa/risco/plano vencido gera seu próprio alerta,
+independente de outros atrasos do mesmo responsável no mesmo projeto — antes disso a
+dedup era por `(responsável, projeto)`, então um responsável com 3 tarefas vencidas no
+mesmo projeto só recebia alerta da primeira, e as outras duas ficavam mudas por até 24h
+(risco: 3 dias). Visibilidade segue a RLS normal de `notifications`
+(`profile_id = auth.uid()`) — **mesmo Admin/PMO só vê os próprios alertas**, nunca os de
+outro responsável; não existe hoje uma visão consolidada de atrasos do portfólio na
+Central de Notificações (para isso, usar os indicadores de projeto, ex.: `overdue_tasks`
+em `v_project_overview`, ou o painel de tarefas com filtro de atraso).
+
 **Motor de alertas agendado.** A lógica de `generate_alerts()` vive em
 `app.run_alert_engine()`, chamada diretamente pelo **Supabase Cron** (`pg_cron`) todo dia
 às 10:00 UTC (07:00 horário de Brasília), antes do início do expediente. A checagem de
