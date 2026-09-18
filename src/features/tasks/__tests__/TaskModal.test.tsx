@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   nextTaskCode: vi.fn(async () => 'T003'),
   listTaskCorresponsibles: vi.fn(async (): Promise<import('@/types/domain').TaskCorresponsible[]> => []),
   replaceTaskCorresponsibles: vi.fn(async () => undefined),
+  listTaskOptions: vi.fn(async (): Promise<import('@/services/tasks').TaskOption[]> => []),
+  listTaskPredecessors: vi.fn(async (): Promise<import('@/services/tasks').TaskDependencyPredecessor[]> => []),
+  listTaskSuccessors: vi.fn(async (): Promise<import('@/services/tasks').TaskDependencySuccessor[]> => []),
+  replaceTaskPredecessors: vi.fn(async () => undefined),
 }));
 
 vi.mock('@/app/AuthProvider', () => ({
@@ -26,6 +30,10 @@ vi.mock('@/services/tasks', async (importOriginal) => {
     nextTaskCode: mocks.nextTaskCode,
     listTaskCorresponsibles: mocks.listTaskCorresponsibles,
     replaceTaskCorresponsibles: mocks.replaceTaskCorresponsibles,
+    listTaskOptions: mocks.listTaskOptions,
+    listTaskPredecessors: mocks.listTaskPredecessors,
+    listTaskSuccessors: mocks.listTaskSuccessors,
+    replaceTaskPredecessors: mocks.replaceTaskPredecessors,
   };
 });
 
@@ -100,5 +108,40 @@ describe('TaskModal - rateio de responsaveis', () => {
     renderWithProviders(<TaskModal open onClose={() => {}} projectId="project-1" task={{ ...task, assignee_allocation_percent: 75 }} canEdit />);
     expect(await screen.findByDisplayValue('75')).toBeInTheDocument();
     expect(await screen.findByDisplayValue('25')).toBeInTheDocument();
+  });
+});
+
+describe('TaskModal - dependencias', () => {
+  it('sem predecessora, informa que a tarefa nao depende de nenhuma outra', async () => {
+    renderWithProviders(<TaskModal open onClose={() => {}} projectId="project-1" task={task} canEdit />);
+    expect(await screen.findByText(/Sem predecessora/i)).toBeInTheDocument();
+  });
+
+  it('adiciona uma predecessora e salva com tipo e defasagem padrao', async () => {
+    mocks.listTaskOptions.mockResolvedValueOnce([
+      { id: 'task-1', code: 'T001', title: 'Validar calculos IFRS 16' },
+      { id: 'task-2', code: 'T002', title: 'Levantar contratos' },
+    ]);
+    renderWithProviders(<TaskModal open onClose={() => {}} projectId="project-1" task={task} canEdit />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Adicionar dependencia/i }));
+    expect(screen.getByLabelText('Tarefa predecessora')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mocks.replaceTaskPredecessors).toHaveBeenCalledWith('task-1', [
+      expect.objectContaining({ predecessor_id: 'task-2', dependency_type: 'FS', lag_days: 0 }),
+    ]));
+  });
+
+  it('exibe as sucessoras (o que a tarefa bloqueia) como somente leitura', async () => {
+    mocks.listTaskSuccessors.mockResolvedValueOnce([
+      {
+        id: 'dep-1', predecessor_id: 'task-1', successor_id: 'task-3', dependency_type: 'FS', lag_days: 0,
+        successor: { code: 'T003', title: 'Fechar apuracao' },
+      },
+    ]);
+    renderWithProviders(<TaskModal open onClose={() => {}} projectId="project-1" task={task} canEdit />);
+    expect(await screen.findByText(/Bloqueia: T003 · Fechar apuracao/i)).toBeInTheDocument();
   });
 });

@@ -711,6 +711,68 @@ reset role;
 delete from public.project_members where project_id = :'comments_project_id';
 delete from public.projects where id = :'comments_project_id';
 
+-- -----------------------------------------------------------------------------
+-- Dependencias entre tarefas: guarda de mesmo-projeto e anti-ciclo
+--
+-- `task_dependencies` nunca teve guarda no banco alem de `predecessor_id <>
+-- successor_id` (so' barra o ciclo trivial de 1 aresta). Ao expor a edicao
+-- pela interface, a migration 20260919120000 fechou duas lacunas: dependencia
+-- cruzando projeto, e ciclo de 2+ arestas (A->B->C->A).
+-- -----------------------------------------------------------------------------
+\set deps_project_id 99999999-9999-4999-8999-000000000060
+\set deps_other_project_id 99999999-9999-4999-8999-000000000061
+
+insert into public.projects (id, code, name, category, status, start_date, target_date, progress_method)
+values (:'deps_project_id', 'TEST-DEPS', 'Projeto dependencias', 'Teste', 'em_andamento',
+        current_date - 10, current_date + 30, 'automatico'),
+       (:'deps_other_project_id', 'TEST-DEPS-2', 'Outro projeto', 'Teste', 'em_andamento',
+        current_date - 10, current_date + 30, 'automatico');
+
+insert into public.tasks (id, project_id, code, title) values
+  ('99999999-9999-4999-8999-000000000062', :'deps_project_id', 'DA', 'Tarefa A'),
+  ('99999999-9999-4999-8999-000000000063', :'deps_project_id', 'DB', 'Tarefa B'),
+  ('99999999-9999-4999-8999-000000000064', :'deps_project_id', 'DC', 'Tarefa C'),
+  ('99999999-9999-4999-8999-000000000065', :'deps_other_project_id', 'DD', 'Tarefa D (outro projeto)');
+
+-- Cadeia valida A -> B -> C: nenhuma das duas arestas fecha ciclo.
+insert into public.task_dependencies (predecessor_id, successor_id)
+values ('99999999-9999-4999-8999-000000000062', '99999999-9999-4999-8999-000000000063');
+insert into public.task_dependencies (predecessor_id, successor_id)
+values ('99999999-9999-4999-8999-000000000063', '99999999-9999-4999-8999-000000000064');
+select pg_temp.assert(
+  (select count(*) = 2 from public.task_dependencies
+    where predecessor_id in ('99999999-9999-4999-8999-000000000062', '99999999-9999-4999-8999-000000000063')),
+  'cadeia A->B->C e criada sem erro (nao e ciclo)');
+
+-- C -> A fecharia o ciclo A->B->C->A.
+select pg_temp.assert_raises(
+  $q$insert into public.task_dependencies (predecessor_id, successor_id)
+     values ('99999999-9999-4999-8999-000000000064', '99999999-9999-4999-8999-000000000062')$q$,
+  'dependencia que fecharia um ciclo e rejeitada');
+
+-- D (outro projeto) -> A: predecessora e sucessora em projetos diferentes.
+select pg_temp.assert_raises(
+  $q$insert into public.task_dependencies (predecessor_id, successor_id)
+     values ('99999999-9999-4999-8999-000000000065', '99999999-9999-4999-8999-000000000062')$q$,
+  'dependencia cruzando projetos e rejeitada');
+
+-- Atualizar so' o tipo/lag de uma aresta existente (sem trocar predecessora/
+-- sucessora) continua funcionando - a guarda nao pode travar o caso comum.
+update public.task_dependencies set dependency_type = 'SS', lag_days = 2
+ where predecessor_id = '99999999-9999-4999-8999-000000000062'
+   and successor_id = '99999999-9999-4999-8999-000000000063';
+select pg_temp.assert(
+  (select dependency_type = 'SS' and lag_days = 2 from public.task_dependencies
+    where predecessor_id = '99999999-9999-4999-8999-000000000062'
+      and successor_id = '99999999-9999-4999-8999-000000000063'),
+  'editar tipo/lag de uma dependencia existente nao e bloqueado pela guarda anti-ciclo');
+
+delete from public.task_dependencies where predecessor_id in (
+  '99999999-9999-4999-8999-000000000062', '99999999-9999-4999-8999-000000000063', '99999999-9999-4999-8999-000000000064'
+);
+delete from public.tasks where project_id in (:'deps_project_id', :'deps_other_project_id');
+delete from public.projects where id in (:'deps_project_id', :'deps_other_project_id');
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
 delete from public.projects where id = :'linked_project_id';

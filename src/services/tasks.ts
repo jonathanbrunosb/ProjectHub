@@ -154,3 +154,65 @@ export async function listDependencies(projectId: string): Promise<TaskDependenc
   if (error) throw error;
   return (data ?? []) as unknown as TaskDependency[];
 }
+
+export interface TaskOption { id: string; code: string; title: string }
+
+/** Lista enxuta para popular o seletor de predecessora - nao carrega os demais campos da tarefa. */
+export async function listTaskOptions(projectId: string): Promise<TaskOption[]> {
+  const { data, error } = await supabase
+    .from('tasks').select('id,code,title').eq('project_id', projectId).order('code');
+  if (error) throw error;
+  return (data ?? []) as unknown as TaskOption[];
+}
+
+export interface TaskDependencyLink {
+  id: string; predecessor_id: string; successor_id: string;
+  dependency_type: string; lag_days: number;
+}
+
+export interface TaskDependencyPredecessor extends TaskDependencyLink {
+  predecessor: { code: string; title: string } | null;
+}
+
+export interface TaskDependencySuccessor extends TaskDependencyLink {
+  successor: { code: string; title: string } | null;
+}
+
+/** Predecessoras da tarefa (o que ELA depende) - editavel no TaskModal. */
+export async function listTaskPredecessors(taskId: string): Promise<TaskDependencyPredecessor[]> {
+  const { data, error } = await supabase
+    .from('task_dependencies')
+    .select('id,predecessor_id,successor_id,dependency_type,lag_days,predecessor:tasks!task_dependencies_predecessor_id_fkey(code,title)')
+    .eq('successor_id', taskId);
+  if (error) throw error;
+  return (data ?? []) as unknown as TaskDependencyPredecessor[];
+}
+
+/** Sucessoras da tarefa (o que depende DELA) - exibicao somente leitura, editada a partir da outra tarefa. */
+export async function listTaskSuccessors(taskId: string): Promise<TaskDependencySuccessor[]> {
+  const { data, error } = await supabase
+    .from('task_dependencies')
+    .select('id,predecessor_id,successor_id,dependency_type,lag_days,successor:tasks!task_dependencies_successor_id_fkey(code,title)')
+    .eq('predecessor_id', taskId);
+  if (error) throw error;
+  return (data ?? []) as unknown as TaskDependencySuccessor[];
+}
+
+/**
+ * Substitui todas as predecessoras da tarefa pela lista informada
+ * (delete-and-insert, mesmo padrao de `replaceTaskCorresponsibles`) - nao ha'
+ * historico de dependencia a preservar por linha, e a UI sempre edita a
+ * lista inteira de uma vez.
+ */
+export async function replaceTaskPredecessors(
+  successorId: string,
+  entries: { predecessor_id: string; dependency_type: string; lag_days: number }[],
+): Promise<void> {
+  const { error: deleteError } = await supabase.from('task_dependencies').delete().eq('successor_id', successorId);
+  if (deleteError) throw deleteError;
+  if (entries.length === 0) return;
+  const { error: insertError } = await supabase
+    .from('task_dependencies')
+    .insert(entries.map((entry) => ({ successor_id: successorId, ...entry })));
+  if (insertError) throw insertError;
+}

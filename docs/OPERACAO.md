@@ -28,6 +28,7 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 | `20260909132537_publish_reference_templates.sql` | Publica o catálogo funcional de 6 templates, 8 fases, 8 tarefas-modelo e o campo de referência do template de sistemas em QA e PRD. Somente dados, idempotente e sem alteração de schema |
 | `20260918190000_schedule_alert_engine.sql` | Extrai `generate_alerts()` para `app.run_alert_engine()` (sem checagem de permissão) e agenda via Supabase Cron (`pg_cron`), guardado para ambientes sem a extensão |
 | `20260919100000_comments_author_only_edit.sql` | FK `comments.created_by → profiles` (permite exibir o nome do autor) e RLS de UPDATE/DELETE restrita ao autor (ou Admin/PMO) — a política genérica anterior permitia que qualquer colaborador com escrita no projeto editasse/apagasse o comentário de outra pessoa |
+| `20260919120000_task_dependencies_guard.sql` | Gatilho `trg_task_dependencies_guard` em `task_dependencies`: rejeita dependência cruzando projeto e dependência que fecharia um ciclo (grafo teria deixado de ser acíclico sem aviso nenhum) |
 
 > A `0015` é separada da `0014` porque um valor recém-adicionado a um `enum` não pode ser
 > usado na mesma transação em que foi criado. Rode-as **em duas execuções distintas**.
@@ -65,8 +66,8 @@ não é replicado para PRD.
 ## Testes
 
 ```bash
-npm run test                # 264 testes de frontend (Vitest + Testing Library)
-./supabase/tests/run.sh     # 136 asserções no banco (48 RLS + 72 regras + 16 ambiente)
+npm run test                # 267 testes de frontend (Vitest + Testing Library)
+./supabase/tests/run.sh     # 140 asserções no banco (48 RLS + 76 regras + 16 ambiente)
 ```
 
 Cobertura do banco: progresso ponderado (incluindo subtarefas e canceladas), progresso
@@ -341,6 +342,27 @@ concentra a lógica.
   é `on delete set null` (mesmo padrão dos demais responsáveis) — o comentário permanece,
   exibido como "Usuário removido".
 
+## Dependências entre tarefas
+
+Editor de predecessora/sucessora dentro do `TaskModal` (aba Tarefas & Entregas, ao editar
+uma tarefa já salva): cada tarefa lista suas predecessoras (editável — tipo de dependência
+FS/SS/FF/SF e defasagem em dias) e, somente leitura, as tarefas que ela bloqueia (edite a
+partir da outra tarefa). As setas do Gantt (`GanttChart`, modo "Gantt" do `TaskList`) já
+liam `task_dependencies` desde antes — só faltava a interface para alimentar a tabela sem
+passar pela importação de Excel.
+
+**Duas guardas novas no banco (`20260919120000`), nenhuma delas exigida antes porque a
+tabela só era alimentada pela importação (dados controlados):**
+
+- **Mesmo projeto.** A RLS de INSERT só conferia escrita no projeto da sucessora — nunca
+  comparou o projeto da predecessora. Uma dependência cruzando projetos passava sem erro.
+- **Sem ciclo.** Só havia `predecessor_id <> successor_id` (barra só o ciclo trivial de 1
+  aresta). Um ciclo maior (A→B→C→A) quebraria silenciosamente a leitura de risco do Gantt
+  (`atRisk` em `TaskList.tsx`), que assume o grafo acíclico.
+
+Gatilho `trg_task_dependencies_guard` (BEFORE INSERT/UPDATE) fecha as duas, com uma CTE
+recursiva para detectar alcançabilidade antes de aceitar a nova aresta.
+
 ## Automações e alertas
 
 `public.generate_alerts()` gera notificações in-app a partir das regras ativas em
@@ -370,7 +392,6 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 | Dashboards montáveis pelo usuário | Arquitetura preparada (componentes e `saved_views`) | Editor de layout |
 | MFA | Schema preparado | Habilitar no Supabase Auth |
 | EVM | Tabela `evm_snapshots` com SPI/CPI calculados | Tela de captura de PV/EV/AC |
-| Edição de dependências pela interface | Tabela e visualização no Gantt prontas | Editor de predecessora/sucessora |
 
 ## Riscos técnicos a acompanhar
 
