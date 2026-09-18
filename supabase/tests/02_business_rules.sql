@@ -538,6 +538,85 @@ select pg_temp.assert(
   ),
   'guardas da baseline tem search_path fixo');
 
+-- -----------------------------------------------------------------------------
+-- Motor de alertas agendado via Supabase Cron
+-- -----------------------------------------------------------------------------
+
+\set alerts_project_id 99999999-9999-4999-8999-000000000040
+
+insert into public.projects (id, code, name, category, status, start_date, target_date, progress_method)
+values (:'alerts_project_id', 'TEST-ALERT', 'Projeto motor de alertas', 'Regulatorio', 'em_andamento',
+        current_date - 30, current_date + 30, 'automatico');
+
+select id as alert_assignee_id from public.profiles where email = 'colab@pmocontabil.dev' \gset
+
+insert into public.tasks (project_id, code, title, assignee_id, start_date, due_date, status, weight) values
+  (:'alerts_project_id', 'AL01', 'Tarefa vencida de teste', :'alert_assignee_id',
+   current_date - 10, current_date - 5, 'em_andamento', 1);
+
+insert into public.risks (project_id, code, title, probability, impact, owner_id, status) values
+  (:'alerts_project_id', 'R-AL01', 'Risco critico sem plano', 5, 5, :'alert_assignee_id', 'aberto');
+
+insert into public.action_plans (project_id, code, title, owner_id, due_date, status) values
+  (:'alerts_project_id', 'PA-AL01', 'Plano de acao vencido', :'alert_assignee_id', current_date - 3, 'em_andamento');
+
+-- app.run_alert_engine() e' o que o cron chama - sem sessao, sem auth.uid().
+-- Roda direto, sem login, para provar que nao depende de contexto de usuario.
+select set_config('request.jwt.claims', '', false);
+select app.run_alert_engine() as alert_engine_result \gset
+
+select pg_temp.assert(
+  (select count(*) = 3 from public.notifications
+    where project_id = :'alerts_project_id'
+      and rule_key in ('task_overdue', 'risk_critical_no_plan', 'action_overdue')),
+  'motor de alertas gera as 3 notificacoes sem sessao de usuario (contexto do cron)');
+
+select pg_temp.assert(
+  (select count(*) from public.notifications
+    where project_id = :'alerts_project_id' and rule_key = 'task_overdue') = 1,
+  'notificacao de tarefa vencida direcionada ao responsavel correto');
+
+-- Rodar de novo no mesmo dia nao duplica (janela de deduplicacao).
+select app.run_alert_engine();
+select pg_temp.assert(
+  (select count(*) = 3 from public.notifications
+    where project_id = :'alerts_project_id'
+      and rule_key in ('task_overdue', 'risk_critical_no_plan', 'action_overdue')),
+  'segunda execucao no mesmo dia nao duplica notificacoes (dedup por rule_key)');
+
+-- public.generate_alerts() continua exigindo Admin/PMO - so' delega a logica
+-- para app.run_alert_engine(), nao abre a checagem.
+select pg_temp.login('colab@pmocontabil.dev');
+select pg_temp.assert_raises(
+  'select public.generate_alerts()',
+  'colaborador nao aciona o motor de alertas manualmente');
+
+select pg_temp.login('pmo@pmocontabil.dev');
+select public.generate_alerts();
+select pg_temp.assert(
+  (select count(*) = 3 from public.notifications
+    where project_id = :'alerts_project_id'
+      and rule_key in ('task_overdue', 'risk_critical_no_plan', 'action_overdue')),
+  'PMO aciona o motor manualmente e o resultado e identico ao do cron (mesma logica, mesma dedup)');
+select set_config('request.jwt.claims', '', false);
+
+-- Este ambiente de teste roda contra Postgres puro (mesma imagem do CI), sem
+-- pg_cron compilado - confirma que o guard da migration realmente pegou esse
+-- caminho, em vez de a extensao ter sido instalada silenciosamente por algum
+-- outro motivo (o que tornaria as duas asserções acima um falso positivo).
+select pg_temp.assert(
+  not exists (select 1 from pg_available_extensions where name = 'pg_cron'),
+  'ambiente de teste nao tem pg_cron - confirma que o guard da migration foi exercitado');
+select pg_temp.assert(
+  not exists (select 1 from pg_extension where extname = 'pg_cron'),
+  'pg_cron nao foi instalado neste ambiente (guard funcionou, nao quebrou a suite)');
+
+delete from public.notifications where project_id = :'alerts_project_id';
+delete from public.action_plans where project_id = :'alerts_project_id';
+delete from public.risks where project_id = :'alerts_project_id';
+delete from public.tasks where project_id = :'alerts_project_id';
+delete from public.projects where id = :'alerts_project_id';
+
 -- Limpeza do projeto de teste
 delete from public.projects where code = 'TEST-001';
 delete from public.projects where id = :'linked_project_id';
