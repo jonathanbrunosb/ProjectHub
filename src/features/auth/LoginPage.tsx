@@ -42,8 +42,13 @@ export function LoginPage() {
     // preferencia de tema (claro/escuro) do usuario/sistema (mesma decisao de
     // antes do redesenho, so' que agora aplicada uma vez no topo em vez de so'
     // no painel do formulario, ja que o novo fundo externo tambem precisa disso).
-    <div className="theme-light-scope flex min-h-screen items-center justify-center bg-surface-2 p-4 py-8 sm:p-6 lg:p-10">
-      <div className="relative grid w-full max-w-6xl overflow-hidden rounded-2xl bg-surface shadow-pop lg:grid-cols-2 lg:min-h-[620px]">
+    <div className="theme-light-scope flex min-h-screen items-center justify-center bg-surface-2 p-3 py-6 sm:p-4 lg:p-6">
+      {/* Cantos retos por diretriz de design (nao arredondar o container
+          principal) - so' o `overflow-hidden` permanece, para recortar a foto
+          e a onda do divisor nos limites do card. max-w mais largo que a
+          versao anterior (6xl -> 1440px) para reduzir a folga lateral em
+          notebook/desktop sem colar nas bordas da viewport. */}
+      <div className="relative grid w-full max-w-[1440px] overflow-hidden bg-surface shadow-pop lg:grid-cols-2 lg:min-h-[640px]">
         {/* Painel institucional - oculto no mobile, onde a identidade aparece
             de forma compacta acima do formulario (ver BrandLockupCompact abaixo). */}
         <div className="relative hidden flex-col justify-between overflow-hidden bg-nav p-8 text-nav-fg lg:flex xl:p-12">
@@ -65,7 +70,7 @@ export function LoginPage() {
 
           <div className="relative z-10 max-w-md">
             <h1 className="text-2xl font-semibold leading-snug text-white">
-              Fonte unica de verdade para o portfolio da Contabilidade.
+              Fonte de verdade para o portfolio da Contabilidade.
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-nav-muted">
               Planejamento, execucao, custos, recursos, riscos, entregas e governanca de todos os
@@ -107,8 +112,8 @@ export function LoginPage() {
         </svg>
 
         {/* Painel do formulario. */}
-        <div className="flex min-w-0 items-center justify-center px-6 py-10 text-fg sm:py-12">
-          <div className="w-full" style={{ maxWidth: 'min(100%, 420px)' }}>
+        <div className="flex min-w-0 items-center justify-center px-6 py-10 text-fg sm:py-12 lg:px-10">
+          <div className="w-full" style={{ maxWidth: 'min(100%, 440px)' }}>
             <div className="mb-8 lg:hidden">
               <BrandLockupCompact />
             </div>
