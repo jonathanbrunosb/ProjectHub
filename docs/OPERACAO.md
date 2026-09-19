@@ -524,3 +524,35 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 - **Bundle dos gráficos.** O chunk do Recharts é o maior da aplicação (~115 kB gzip).
   Já está isolado e carregado sob demanda, mas é candidato a substituição se o tempo de
   carga do dashboard se tornar crítico.
+- **Continuidade/backup.** Não há política de backup/retenção/disaster recovery
+  documentada neste repositório. O Supabase oferece backup automático (PITR) conforme o
+  plano contratado — confirmar diretamente no billing de QA/PRD e documentar RPO/RTO
+  reais, em vez de assumir que existe.
+
+## Hardening de segurança aplicado
+
+Levantamento via `get_advisors` (Supabase) em QA/PRD, corrigido em
+`20260919160000_harden_search_path_and_extensions.sql`:
+
+- **`search_path` explícito em 15 funções** (14 em `app.*`, `public.risk_criticality`)
+  que não tinham — mesma classe de bug do `hmac()` não resolvido em `app.webhook_post`
+  (`20260919150000`), fechada preventivamente nas demais antes de aparecer de novo.
+  Nenhuma delas chama função de extensão (confirmado lendo cada definição); todas só
+  referenciam `app.*`/`public.*` já totalmente qualificado no corpo — sem risco
+  funcional, é defesa em profundidade.
+- **`btree_gist` movida para o schema `extensions`** (relocável, `extrelocatable = true`,
+  e não usada por nenhum índice/constraint do schema hoje — o único índice GiST existente,
+  `critical_calendar_period_idx`, usa suporte nativo de `daterange`, não operadores do
+  `btree_gist`).
+- **`pg_net` permanece em `public`, deliberadamente.** Não é relocável
+  (`extrelocatable = false`, confirmado direto no catálogo) — gerenciada pelo próprio
+  Supabase com schema interno fixo (`net`). O achado `extension_in_public` para `pg_net`
+  fica aceito como está; forçar via drop/recreate arriscaria quebrar o webhook (PR
+  #66/#68) por um ganho que a própria extensão não suporta.
+
+Ainda pendentes, fora de escopo desta correção (avaliar antes de agir, não são bugs):
+`auth_leaked_password_protection` (toggle manual no painel de Auth, QA e PRD — ver
+"Ambientes QA e PRD") e `authenticated_security_definer_function_executable` (13-14
+RPCs públicas com `SECURITY DEFINER` chamáveis por `authenticated` — é o desenho
+intencional da plataforma: cada uma faz sua própria checagem de papel internamente,
+mesmo padrão desde a `0011`).
