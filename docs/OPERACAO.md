@@ -37,6 +37,29 @@ Numeradas e versionadas em `supabase/migrations/`, aplicadas em ordem:
 manual em PRD é proibida: cria divergência de schema que só aparece quando a próxima
 migration falha. Ver [AMBIENTES.md](AMBIENTES.md).
 
+**Aplicação automática (`.github/workflows/deploy-migrations.yml`).** Até aqui, uma
+migration mesclada em `main` só chegava a QA/PRD quando alguém lembrava de aplicar
+manualmente — já causou schema divergente e silencioso entre `main` e os bancos
+hospedados (aconteceu de verdade: `20260919130000_webhook_dispatch` ficou mesclada e
+sem aplicar em QA por um tempo). O workflow fecha essa lacuna:
+
+- Dispara em push para `main` quando `supabase/migrations/**` muda (ou manualmente via
+  `workflow_dispatch`).
+- **QA aplica automaticamente** (`supabase db push`, idempotente — só aplica o que ainda
+  não está em `supabase_migrations.schema_migrations` no projeto de destino).
+- **PRD exige aprovação manual**: o job roda sob o GitHub Environment `production`, que
+  precisa ter *Required reviewers* configurado (`Settings → Environments` no GitHub) —
+  sem isso, o job fica pendente indefinidamente em vez de aplicar sozinho em produção.
+- Segredos necessários (`Settings → Secrets and variables → Actions`):
+  `SUPABASE_ACCESS_TOKEN` (token pessoal, `https://supabase.com/dashboard/account/tokens`
+  — é a mesma limitação de escopo do MFA/SMTP: token do Supabase não é por projeto),
+  `SUPABASE_QA_PROJECT_REF`, `SUPABASE_QA_DB_PASSWORD`, `SUPABASE_PRD_PROJECT_REF`,
+  `SUPABASE_PRD_DB_PASSWORD`. Nenhum desses existe ainda — o workflow falha (de forma
+  visível, não silenciosa) até serem cadastrados.
+- Continua não cobrindo Edge Functions (publicação segue manual, ver "Edge Functions")
+  nem o passo 2 do checklist de provisionamento de PRD, que documenta o caminho manual
+  original como alternativa (ver [AMBIENTES.md](AMBIENTES.md)).
+
 > Ao criar uma migration nova, **habilite RLS explicitamente** na tabela: a `0011` só
 > alcança as tabelas que existiam quando ela rodou.
 
@@ -489,8 +512,9 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
   saiu barato e fecha a porta antes de alguém adicionar um `?returnTo=` pós-login.
 - **Duplicação operacional.** Dois projetos significam duas execuções de migration, dois
   deploys de Edge Function e dois conjuntos de segredos. É o custo consciente de tornar a
-  contaminação QA→PRD fisicamente impossível. Mitigue automatizando a aplicação de
-  migrations antes que o número de ambientes cresça.
+  contaminação QA→PRD fisicamente impossível. A aplicação de migrations em QA já é
+  automática (`.github/workflows/deploy-migrations.yml`, ver "Migrations" acima); deploy
+  de Edge Function segue manual (`supabase functions deploy`, ver "Edge Functions").
 - **Volume da trilha de auditoria.** O gatilho grava `old_data` e `new_data` completos.
   Acima de ~10⁶ eventos, avalie particionamento por mês e política de retenção.
 - **`v_resource_capacity`.** Gera uma série de 7 meses por colaborador. Com centenas de

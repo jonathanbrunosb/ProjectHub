@@ -168,11 +168,33 @@ No GitHub: `Settings → Secrets and variables → Actions`, os quatro segredos 
 workflow injeta os dois conjuntos no build; o Vite inlineia valores em tempo de build,
 então **qualquer troca de segredo exige novo build**.
 
+**Segredos separados para aplicar migrations** (`.github/workflows/deploy-migrations.yml`,
+ver "Migrations" em [OPERACAO.md](OPERACAO.md)) — não confundir com os quatro acima, que
+só servem para o build do frontend:
+
+```bash
+SUPABASE_ACCESS_TOKEN=<token pessoal do Supabase, sbp_...>
+SUPABASE_QA_PROJECT_REF=<ref do projeto QA>
+SUPABASE_QA_DB_PASSWORD=<senha do Postgres de QA>
+SUPABASE_PRD_PROJECT_REF=<ref do projeto PRD>
+SUPABASE_PRD_DB_PASSWORD=<senha do Postgres de PRD>
+```
+
+`SUPABASE_ACCESS_TOKEN` é criado em `https://supabase.com/dashboard/account/tokens` —
+o Supabase não emite token escopado por projeto, então esse token pessoal alcança toda
+a conta/organização (mesma limitação de escopo que já existe hoje no acesso manual via
+painel). O job de PRD roda sob o GitHub Environment `production`: crie-o em
+`Settings → Environments` com *Required reviewers* configurado antes de cadastrar os
+segredos de PRD, senão qualquer migration mesclada em `main` fica pendente de aprovação
+indefinidamente (comportamento seguro, mas vale configurar o revisor logo).
+
 ## Provisionamento de PRD (checklist)
 
 1. Criar o projeto Supabase de produção (região `sa-east-1` para latência no Brasil).
-2. Aplicar as migrations `0001` → `0015`, em ordem, no SQL Editor.
-   **Não rodar `seed.sql`.**
+2. Aplicar as migrations em ordem — via `.github/workflows/deploy-migrations.yml`
+   (`workflow_dispatch`, uma vez configurados os segredos de PRD e o Environment
+   `production`) ou manualmente no SQL Editor, se a automação ainda não estiver
+   configurada nesse ponto do provisionamento. **Não rodar `seed.sql`.**
 3. Declarar o ambiente:
    ```sql
    update public.app_environment set environment = 'PRD';

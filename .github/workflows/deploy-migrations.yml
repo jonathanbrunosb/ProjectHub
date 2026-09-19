@@ -1,0 +1,68 @@
+name: Aplicar migrations em QA/PRD
+
+# Fecha uma lacuna operacional real: ate aqui, migration mesclada em `main` so
+# chegava a QA/PRD quando alguem lembrava de aplicar manualmente (SQL Editor
+# ou Supabase CLI). Isso ja gerou schema divergente e silencioso entre `main`
+# e os bancos hospedados. QA aplica automaticamente a cada push; PRD exige
+# aprovacao manual via GitHub Environment (`production`) - nunca aplica
+# sozinho em producao.
+#
+# So dispara quando supabase/migrations/** muda, para nao rodar a toa em
+# todo merge. `supabase db push` e idempotente: so aplica o que ainda nao
+# esta registrado em supabase_migrations.schema_migrations no projeto de
+# destino, entao um re-run apos uma migration ja aplicada e um no-op seguro.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate-qa:
+    name: QA
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Aplicar migrations pendentes em QA
+        run: |
+          supabase db push --yes \
+            --project-ref "${{ secrets.SUPABASE_QA_PROJECT_REF }}" \
+            --password "${{ secrets.SUPABASE_QA_DB_PASSWORD }}"
+
+  migrate-prd:
+    name: PRD (requer aprovacao manual)
+    needs: migrate-qa
+    runs-on: ubuntu-latest
+    # Environment "production" precisa existir no repo (Settings -> Environments)
+    # com "Required reviewers" configurado - e o gate manual antes de tocar o
+    # banco de producao. Sem essa configuracao, o job fica pendente indefinidamente
+    # em vez de aplicar sozinho, o que e o comportamento seguro por padrao.
+    environment:
+      name: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Aplicar migrations pendentes em PRD
+        run: |
+          supabase db push --yes \
+            --project-ref "${{ secrets.SUPABASE_PRD_PROJECT_REF }}" \
+            --password "${{ secrets.SUPABASE_PRD_DB_PASSWORD }}"
