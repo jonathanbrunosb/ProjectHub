@@ -525,10 +525,58 @@ Itens do escopo original ainda não implementados, com o caminho previsto:
 - **Bundle dos gráficos.** O chunk do Recharts é o maior da aplicação (~115 kB gzip).
   Já está isolado e carregado sob demanda, mas é candidato a substituição se o tempo de
   carga do dashboard se tornar crítico.
-- **Continuidade/backup.** Não há política de backup/retenção/disaster recovery
-  documentada neste repositório. O Supabase oferece backup automático (PITR) conforme o
-  plano contratado — confirmar diretamente no billing de QA/PRD e documentar RPO/RTO
-  reais, em vez de assumir que existe.
+- **Backup de Storage.** O backup diário do Supabase cobre o banco, não os arquivos do
+  Storage — anexos (`attachments`, ver `src/services/attachments.ts`) não têm backup
+  automático nenhum. Volume baixo hoje (poucas unidades); reavaliar se o uso de anexos
+  crescer.
+
+## Continuidade e recuperação de desastre (backup/DR)
+
+Levantamento feito em 20/09/2026 (organização `Contabilidade-Equatorial`, plano **Pro**).
+
+**Estado atual, confirmado:**
+
+| | QA | PRD |
+|---|---|---|
+| Backup automático diário (incluso no Pro) | Ativo | Ativo |
+| Retenção | 7 dias | 7 dias |
+| PITR (Point-in-Time Recovery) | Desativado | Desativado |
+| Custo do backup atual | R$ 0 | R$ 0 |
+
+**RPO (perda máxima de dados) — até 24h.** Sem PITR, um incidente minutos antes do
+snapshot diário perde as mudanças daquele intervalo. Com PITR ativo custaria
+~US$100/mês/projeto (retenção de 7 dias) e reduziria o RPO a ~2 minutos.
+
+**RTO (tempo de restauração) — sem SLA formal do Supabase**, depende do tamanho do
+banco. O volume atual da plataforma é pequeno (dezenas de linhas por tabela), então a
+restauração deve levar minutos, não horas — mas isso não é garantido contratualmente,
+só uma estimativa pelo tamanho de hoje.
+
+**Decisão registrada: manter só o backup diário (padrão do Pro) em QA e PRD por ora,
+sem contratar PITR.** Racional: o volume de lançamentos diário atual é baixo, e o pior
+cenário do RPO de 24h — perder até um dia de atualização de tarefas/comentários/status —
+é operacionalmente recuperável por reentrada manual, não é perda de fechamento contábil
+já auditado (auditoria e financeiro não dependem de granularidade de segundos aqui).
+Os ~US$1.200/ano/projeto do PITR não se justificam nesse volume.
+
+**Reavaliar PITR quando:** o sistema virar registro oficial de fechamento com janela de
+disponibilidade contínua, ou o volume diário de lançamentos crescer a ponto de "1 dia
+perdido" gerar retrabalho real (não só reentrada pontual).
+
+**Processo de restauração (documentado para quando for preciso):**
+1. Dashboard do projeto → **Database → Backups** → escolher o snapshot mais próximo
+   (antes) do ponto desejado → **Restore**.
+2. O projeto fica **indisponível** durante o processo — avisar usuários antes.
+3. Senhas de roles customizadas (se houver) não são preservadas no restore; resetar
+   depois de concluído.
+4. Também pode ser feito via Management API
+   (`POST /v1/projects/{ref}/database/backups/restore-pitr` ou o endpoint de backup
+   comum, conforme o tipo), usando `SUPABASE_ACCESS_TOKEN`.
+
+**Fora do escopo do backup de banco:** arquivos do Storage (ver bullet acima, em
+"Riscos técnicos a acompanhar") e nada em PRD depende de QA para restaurar — os dois
+projetos são fisicamente isolados (ver `AMBIENTES.md`), então um incidente em um não
+compromete o backup do outro.
 
 ## Hardening de segurança aplicado
 
