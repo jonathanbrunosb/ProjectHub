@@ -174,16 +174,31 @@ só servem para o build do frontend:
 
 ```bash
 SUPABASE_ACCESS_TOKEN=<token pessoal do Supabase, sbp_...>
-SUPABASE_QA_PROJECT_REF=<ref do projeto QA>
-SUPABASE_QA_DB_PASSWORD=<senha do Postgres de QA>
-SUPABASE_PRD_PROJECT_REF=<ref do projeto PRD>
-SUPABASE_PRD_DB_PASSWORD=<senha do Postgres de PRD>
+SUPABASE_QA_DB_URL=<connection string do pooler de QA, modo sessao>
+SUPABASE_PRD_DB_URL=<connection string do pooler de PRD, modo sessao>
 ```
 
-`SUPABASE_ACCESS_TOKEN` é criado em `https://supabase.com/dashboard/account/tokens` —
-o Supabase não emite token escopado por projeto, então esse token pessoal alcança toda
-a conta/organização (mesma limitação de escopo que já existe hoje no acesso manual via
-painel). O job de PRD roda sob o GitHub Environment `production`: crie-o em
+`SUPABASE_ACCESS_TOKEN` é criado em `https://supabase.com/dashboard/account/tokens`.
+Desde set/2026 o Supabase permite escopar o token por projeto (tela "Generate token" →
+`Resource access: Project`) — prefira essa opção, marcando só `ProjectHub` (QA) e
+`ProjectHUB-PRD`, em vez do token de conta inteira (`Organization`), que alcança todo
+projeto da organização sem necessidade.
+
+`SUPABASE_QA_DB_URL` / `SUPABASE_PRD_DB_URL` **não são** a connection string direta
+(`db.<ref>.supabase.co`) — essa resolve só em IPv6, e o runner do GitHub Actions não
+suporta IPv6 (`IPv6 is not supported on your current network`, erro real encontrado
+testando esta automação). Use o **pooler em modo sessão** (Supavisor, sempre IPv4):
+no painel de cada projeto, botão **Connect → Session pooler**, copie a string e
+substitua `[YOUR-PASSWORD]` pela senha do Postgres daquele projeto. Formato:
+
+```
+postgresql://postgres.<ref>:<senha>@aws-<N>-<regiao>.pooler.supabase.com:5432/postgres
+```
+
+Não monte essa string manualmente adivinhando `aws-0-` ou `aws-1-` — o shard é
+específico de cada projeto; copie sempre do painel.
+
+O job de PRD roda sob o GitHub Environment `production`: crie-o em
 `Settings → Environments` com *Required reviewers* configurado antes de cadastrar os
 segredos de PRD, senão qualquer migration mesclada em `main` fica pendente de aprovação
 indefinidamente (comportamento seguro, mas vale configurar o revisor logo).
