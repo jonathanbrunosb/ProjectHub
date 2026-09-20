@@ -618,3 +618,4 @@ Segue deliberadamente sem ação, não é uma pendência:
 `SECURITY DEFINER` chamáveis por `authenticated`) é o desenho intencional da
 plataforma — cada uma faz sua própria checagem de papel internamente, mesmo padrão
 desde a `0011`.
+
