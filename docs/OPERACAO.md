@@ -619,3 +619,4 @@ Segue deliberadamente sem ação, não é uma pendência:
 plataforma — cada uma faz sua própria checagem de papel internamente, mesmo padrão
 desde a `0011`.
 
+
