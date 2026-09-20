@@ -66,5 +66,10 @@ jobs:
           version: latest
 
       - name: Aplicar migrations pendentes em PRD
+        # --include-all: PRD ficou sem duas migrations que QA ja tinha
+        # (0019_service_role_grants e a fix da view de alocacao, ver PR #74),
+        # entao a proxima pendente e' anterior a ultima ja aplicada - o CLI
+        # recusa por seguranca sem essa flag. Conteudo das duas ja' revisado
+        # e confirmado idempotente antes de habilitar isto.
         run: |
-          supabase db push --yes --db-url "${{ secrets.SUPABASE_PRD_DB_URL }}"
+          supabase db push --yes --include-all --db-url "${{ secrets.SUPABASE_PRD_DB_URL }}"
