@@ -4,10 +4,16 @@
 -- Conteudo capturado direto de supabase_migrations.schema_migrations em QA
 -- (versao original 20260909195349) para fechar a divergencia entre o schema
 -- real do banco e o historico versionado no repositorio.
+--
+-- create or replace (em vez de drop + create): em PRD, onde esta migration
+-- nunca tinha sido aplicada, v_resource_capacity e v_legacy_allocation_comparison
+-- ja foram criadas sobre a v_task_planned_allocation original (migrations
+-- posteriores) - um DROP falha com "outros objetos dependem desta view"
+-- (SQLSTATE 2BP01). A lista de colunas e' identica a original (mesmo nome,
+-- ordem e tipo), entao REPLACE e' seguro e nao exige recriar as dependentes.
 -- =============================================================================
 
-drop view if exists public.v_task_planned_allocation;
-create view public.v_task_planned_allocation as
+create or replace view public.v_task_planned_allocation as
 with responsible as (
   select t.id as task_id, t.project_id, t.assignee_id as profile_id,
          t.assignee_allocation_percent as custom_percent
