@@ -248,6 +248,7 @@ Resumo operacional:
 | Segredos no GitHub | `VITE_SUPABASE_QA_*` | `VITE_SUPABASE_PRD_*` |
 | SMTP próprio (`Authentication → SMTP Settings`) | Configurado | Configurado |
 | MFA — TOTP (`Authentication → Multi-Factor Authentication`) | Habilitado | Habilitado |
+| Proteção contra senha vazada (`Authentication → Sign In / Providers → Email → Prevent use of leaked passwords`) | Habilitado | Habilitado |
 
 O Vite inlineia as variáveis em tempo de build: **trocar um segredo exige novo deploy**,
 não basta salvar no GitHub.
@@ -550,9 +551,13 @@ Levantamento via `get_advisors` (Supabase) em QA/PRD, corrigido em
   fica aceito como está; forçar via drop/recreate arriscaria quebrar o webhook (PR
   #66/#68) por um ganho que a própria extensão não suporta.
 
-Ainda pendentes, fora de escopo desta correção (avaliar antes de agir, não são bugs):
-`auth_leaked_password_protection` (toggle manual no painel de Auth, QA e PRD — ver
-"Ambientes QA e PRD") e `authenticated_security_definer_function_executable` (13-14
-RPCs públicas com `SECURITY DEFINER` chamáveis por `authenticated` — é o desenho
-intencional da plataforma: cada uma faz sua própria checagem de papel internamente,
-mesmo padrão desde a `0011`).
+**`auth_leaked_password_protection` resolvido** (toggle manual no painel de Auth,
+`Authentication → Sign In / Providers → Email → Prevent use of leaked passwords`,
+habilitado em QA e PRD — ver "Ambientes QA e PRD"). Confirmado via `get_advisors`: o
+achado não aparece mais em nenhum dos dois ambientes.
+
+Segue deliberadamente sem ação, não é uma pendência:
+`authenticated_security_definer_function_executable` (13-14 RPCs públicas com
+`SECURITY DEFINER` chamáveis por `authenticated`) é o desenho intencional da
+plataforma — cada uma faz sua própria checagem de papel internamente, mesmo padrão
+desde a `0011`.
