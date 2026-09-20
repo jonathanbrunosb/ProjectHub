@@ -37,10 +37,14 @@ jobs:
           version: latest
 
       - name: Aplicar migrations pendentes em QA
+        # --db-url (pooler Supavisor, modo sessao) em vez de --project-ref/--password:
+        # a conexao direta (db.<ref>.supabase.co) so resolve em IPv6, que o runner do
+        # GitHub Actions nao suporta ("IPv6 is not supported on your current network").
+        # O pooler e' sempre IPv4. A connection string completa (com senha embutida)
+        # vem do proprio painel Supabase (Connect -> Session pooler), entao nao ha
+        # necessidade de adivinhar o shard aws-0/aws-1 do projeto.
         run: |
-          supabase db push --yes \
-            --project-ref "${{ secrets.SUPABASE_QA_PROJECT_REF }}" \
-            --password "${{ secrets.SUPABASE_QA_DB_PASSWORD }}"
+          supabase db push --yes --db-url "${{ secrets.SUPABASE_QA_DB_URL }}"
 
   migrate-prd:
     name: PRD (requer aprovacao manual)
@@ -63,6 +67,4 @@ jobs:
 
       - name: Aplicar migrations pendentes em PRD
         run: |
-          supabase db push --yes \
-            --project-ref "${{ secrets.SUPABASE_PRD_PROJECT_REF }}" \
-            --password "${{ secrets.SUPABASE_PRD_DB_PASSWORD }}"
+          supabase db push --yes --db-url "${{ secrets.SUPABASE_PRD_DB_URL }}"
