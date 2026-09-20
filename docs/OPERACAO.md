@@ -107,6 +107,15 @@ clique na linha, estado vazio), geração de XLSX (tipos preservados, freeze, fi
 automático, nome de aba e de arquivo, aviso de QA, workbook multi-aba, arquivo válido) e a
 janela Relatórios (botão por relatório, permissão, relatório vazio, erro de geração).
 
+### CI obrigatório
+
+`.github/workflows/ci.yml` roda os dois jobs acima (frontend e banco) em todo push e pull
+request. Desde 20/09/2026, um **ruleset** em `main` (`Settings → Rules → Rulesets`) exige
+que os dois checks passem antes de qualquer merge — inclusive merges feitos por
+automação/API, já que a lista de bypass foi deixada vazia de propósito. Antes disso, o CI
+era só informativo: dava pra mesclar um PR com build ou teste quebrado sem barreira
+nenhuma.
+
 ## Edge Functions
 
 Tres pontos usam `service_role` — e só eles: ela existe apenas nas variáveis de
