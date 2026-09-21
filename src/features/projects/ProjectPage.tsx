@@ -508,9 +508,11 @@ export function EditProjectModal({
   const canChangeSponsor = can('project.change_sponsor');
   const canChangeOwner = can('project.change_owner');
   const canChangeOrgScope = can('project.change_organizational_scope');
+  const canChangeCode = can('project.change_code');
   const { globalEnabled, effectiveEnabled } = useFinancialModule(project.financial_module_mode);
 
   const [form, setForm] = useState({
+    code: project.code,
     name: project.name, category: project.category, phase: project.phase ?? '',
     status: project.status, priority: project.priority,
     start_date: project.start_date ?? '', target_date: project.target_date ?? '',
@@ -548,7 +550,11 @@ export function EditProjectModal({
       if (form.target_date && form.start_date && form.target_date < form.start_date) {
         throw new Error('A data-alvo deve ser posterior a data de inicio.');
       }
+      if (canChangeCode && !/^[A-Z0-9][A-Z0-9._-]{1,29}$/.test(form.code.trim())) {
+        throw new Error('Codigo invalido: use letras maiusculas, numeros, ponto, hifen ou underscore (2 a 30 caracteres).');
+      }
       await updateProject(project.id, {
+        ...(canChangeCode ? { code: form.code.trim().toUpperCase() } : {}),
         name: form.name.trim(),
         category: form.category.trim(),
         phase: form.phase || null,
@@ -636,6 +642,18 @@ export function EditProjectModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nome" required className="sm:col-span-2">
               <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
+            </Field>
+            <Field
+              label="Codigo"
+              hint={canChangeCode
+                ? 'Identificador publico do projeto - referenciado em relatorios, decisoes e riscos ja existentes.'
+                : 'Somente Admin corrige o codigo do projeto.'}
+            >
+              {canChangeCode ? (
+                <Input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} />
+              ) : (
+                <Input readOnly value={project.code} className="text-muted" />
+              )}
             </Field>
             <Field label="Categoria"><Input value={form.category} onChange={(e) => set('category', e.target.value)} /></Field>
             <Field label="Fase atual"><Input value={form.phase} onChange={(e) => set('phase', e.target.value)} /></Field>

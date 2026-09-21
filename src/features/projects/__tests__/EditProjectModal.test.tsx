@@ -5,11 +5,12 @@ import { renderWithProviders } from '@/test/utils';
 import type { Project } from '@/types/domain';
 
 /**
- * Cobre a governanca de edicao cadastral do projeto: Sponsor, Owner, Empresa
- * e Area responsavel ficam somente leitura sem a capability dedicada
- * (project.change_sponsor/change_owner/change_organizational_scope), viram
- * editaveis com ela, e a troca de Owner exige confirmacao antes de salvar -
- * sem transferir tarefas/alocacoes automaticamente.
+ * Cobre a governanca de edicao cadastral do projeto: Sponsor, Owner, Empresa,
+ * Area responsavel e Codigo ficam somente leitura sem a capability dedicada
+ * (project.change_sponsor/change_owner/change_organizational_scope/change_code),
+ * viram editaveis com ela, e a troca de Owner exige confirmacao antes de
+ * salvar - sem transferir tarefas/alocacoes automaticamente. Codigo e' a
+ * unica dessas capabilities restrita so' a Admin (as demais aceitam PMO).
  */
 let currentCan: (capability: string) => boolean = () => false;
 vi.mock('@/app/AuthProvider', () => ({
@@ -82,6 +83,31 @@ describe('EditProjectModal - governanca de Sponsor/Owner/Empresa/Area', () => {
     expect(await screen.findByDisplayValue('Owner Atual')).toHaveAttribute('readonly');
     expect(await screen.findByDisplayValue('Holding Corporativa')).toHaveAttribute('readonly');
     expect(await screen.findByDisplayValue('Contabilidade Geral')).toHaveAttribute('readonly');
+    expect(screen.getByDisplayValue('CTB-001')).toHaveAttribute('readonly');
+  });
+
+  it('project.change_code e\' restrita a Admin - PMO sozinho nao libera o campo', async () => {
+    currentCan = (c) => [
+      'project.change_sponsor', 'project.change_owner', 'project.change_organizational_scope',
+    ].includes(c);
+    renderWithProviders(<EditProjectModal open onClose={() => {}} project={baseProject()} />);
+
+    expect(await screen.findByDisplayValue('CTB-001')).toHaveAttribute('readonly');
+  });
+
+  it('com project.change_code, o campo Codigo vira editavel e vai no patch em maiusculas', async () => {
+    currentCan = (c) => c === 'project.change_code';
+    renderWithProviders(<EditProjectModal open onClose={() => {}} project={baseProject()} />);
+
+    const codeInput = await screen.findByDisplayValue('CTB-001');
+    expect(codeInput).not.toHaveAttribute('readonly');
+    await userEvent.clear(codeInput);
+    await userEvent.type(codeInput, 'ctb-002');
+    await userEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
+
+    await waitFor(() => expect(updateProject).toHaveBeenCalled());
+    const [, patch] = updateProject.mock.calls[0];
+    expect(patch).toMatchObject({ code: 'CTB-002' });
   });
 
   it('com as capabilities, os campos viram selects editaveis', async () => {

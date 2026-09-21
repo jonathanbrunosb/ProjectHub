@@ -692,3 +692,30 @@ de execução.
 ainda sem uso só pelo volume baixo de dados, não porque sejam inúteis. Remover agora
 seria tirar controle antes de saber se vai ser necessário.
 
+## Correção de código do projeto (Admin)
+
+Admin pode editar o campo `code` de um projeto já criado (tela Projeto → Editar →
+Identificação), para corrigir erro de digitação ou código indevido lançado na criação.
+Antes disso não havia caminho nenhum na UI — e nada bloqueava no banco: a RLS de
+`projects_update` (`0011`) libera `UPDATE` de qualquer coluna para
+Owner/Collaborator/PMO/Admin via `app.can_write_project`, e o guard de governança
+cadastral (`0024_project_governance_guard.sql`) não cobria `code`.
+
+Diferente de Sponsor/Owner/Empresa/Área/baseline (Admin **ou** PMO, capabilities
+`project.change_*` existentes), a troca de código ficou restrita **só a Admin**
+(`project.change_code`, `20260921143000_project_code_admin_edit.sql`) — é o
+identificador público do projeto, referenciado em relatórios, decisões e riscos já
+compartilhados, correção deliberada e pouco frequente, não rotina de PMO. O guard
+`app.guard_project_governance()` bloqueia a troca de `code` para qualquer papel que não
+seja Admin antes mesmo do bypass que já libera PMO para as demais trocas de governança.
+
+Unicidade (`projects_code_uk`) e formato (`^[A-Z0-9][A-Z0-9._-]{1,29}$`,
+`projects_code_ck`) já existiam desde a criação da tabela (`0003`) — reaproveitados sem
+mudança; conflito de código duplicado aparece como mensagem amigável no cliente
+(`describeError`, código `23505`).
+
+Validado: teste de RLS confirmando que PMO e o próprio Owner são negados e Admin corrige
+(`01_rls_tests.sql`), suíte de frontend cobrindo capability/patch/máscara maiúscula
+(`EditProjectModal.test.tsx`), typecheck, lint, suíte completa (335 testes) e build de
+produção, todos verdes.
+

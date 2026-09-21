@@ -52,7 +52,8 @@ export type Capability =
   | 'project.change_sponsor'
   | 'project.change_owner'
   | 'project.change_organizational_scope'
-  | 'project.change_baseline';
+  | 'project.change_baseline'
+  | 'project.change_code';
 
 const matrix: Record<Capability, RoleKey[]> = {
   'portfolio.manage': ['admin', 'pmo'],
@@ -78,6 +79,10 @@ const matrix: Record<Capability, RoleKey[]> = {
   'project.change_owner': ['admin', 'pmo'],
   'project.change_organizational_scope': ['admin', 'pmo'],
   'project.change_baseline': ['admin', 'pmo'],
+  // Codigo e' o identificador publico do projeto (aparece em relatorios,
+  // decisoes, riscos ja compartilhados) - diferente das demais trocas de
+  // governanca, so' Admin corrige, nem PMO.
+  'project.change_code': ['admin'],
 };
 
 const AuthContext = createContext<AuthApi | null>(null);
