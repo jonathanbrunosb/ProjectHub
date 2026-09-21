@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, LayoutList, Columns, GanttChartSquare, CalendarRange, Upload } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Plus, LayoutList, Columns, GanttChartSquare, CalendarRange, Upload, Trash2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
@@ -9,12 +9,16 @@ import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Progress } from '@/components/ui/Progress';
 import { TaskStatusBadge } from '@/components/ui/StatusBadges';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { GanttChart, type GanttScale } from '@/components/gantt/GanttChart';
 import { cn } from '@/utils/cn';
 import { formatDate, daysBetween } from '@/utils/format';
 import { priorityLabel, priorityTone, taskStatusLabel } from '@/utils/domain-labels';
-import { listDependencies, type TaskWithContext } from '@/services/tasks';
+import { describeError } from '@/lib/supabase/client';
+import { listDependencies, bulkDeleteTasks, type TaskWithContext } from '@/services/tasks';
 import { useTableState } from '@/hooks/useTableState';
+import { useAuth } from '@/app/AuthProvider';
 import { TaskBoard } from './TaskBoard';
 import { TaskModal } from './TaskModal';
 import { TaskImportModal } from './TaskImportModal';
@@ -45,7 +49,16 @@ export function TaskList({
   const [editing, setEditing] = useState<TaskWithContext | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const table = useTableState(module);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  // Correcao de cadastro indevido em massa - operacao rara e de alto impacto,
+  // por isso restrita a Admin. Owner/Collaborator continuam excluindo tarefa
+  // a tarefa (TaskModal), sem mudanca.
+  const canBulkDelete = can('tasks.bulk_delete');
 
   const { data: dependencies = [] } = useQuery({
     queryKey: ['dependencies', projectId],
@@ -64,6 +77,30 @@ export function TaskList({
       .filter((t) => !areaFilter || t.assignee?.area?.name === areaFilter),
     [tasks, statusFilter, areaFilter],
   );
+
+  // Descarta selecao de linhas que sairam do filtro/pagina - evita excluir
+  // algo que nao esta mais visivel na tela.
+  useEffect(() => {
+    const visible = new Set(filtered.map((t) => t.id));
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filtered]);
+
+  const bulkDelete = useMutation({
+    mutationFn: () => bulkDeleteTasks([...selected]),
+    onSuccess: () => {
+      const count = selected.size;
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['milestones'] });
+      toast.success(`${count} tarefa(s) excluida(s)`);
+      setSelected(new Set());
+      setConfirmBulkDelete(false);
+    },
+    onError: (e) => toast.error('Nao foi possivel excluir', describeError(e)),
+  });
 
   const columns = useMemo<ColumnDef<TaskWithContext, unknown>[]>(() => {
     const base: ColumnDef<TaskWithContext, unknown>[] = [
@@ -121,8 +158,41 @@ export function TaskList({
         cell: ({ row }) => <span className="font-mono text-xs text-brand">{row.original.project?.code ?? '—'}</span>,
       });
     }
+    if (canBulkDelete) {
+      const allVisibleSelected = filtered.length > 0 && filtered.every((t) => selected.has(t.id));
+      base.unshift({
+        id: 'select',
+        size: 36,
+        enableSorting: false,
+        meta: { exportable: false, label: 'Selecionar' },
+        header: () => (
+          <input
+            type="checkbox"
+            aria-label="Selecionar todas as tarefas visiveis"
+            className="accent-[rgb(var(--c-brand))]"
+            checked={allVisibleSelected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => setSelected(allVisibleSelected ? new Set() : new Set(filtered.map((t) => t.id)))}
+          />
+        ),
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            aria-label={`Selecionar ${row.original.code}`}
+            className="accent-[rgb(var(--c-brand))]"
+            checked={selected.has(row.original.id)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => setSelected((prev) => {
+              const next = new Set(prev);
+              if (next.has(row.original.id)) next.delete(row.original.id); else next.add(row.original.id);
+              return next;
+            })}
+          />
+        ),
+      });
+    }
     return base;
-  }, [showProjectColumn]);
+  }, [showProjectColumn, canBulkDelete, selected, filtered]);
 
   const ganttItems = useMemo(
     () => filtered
@@ -197,12 +267,25 @@ export function TaskList({
           </Select>
         )}
 
-        {canEdit && projectId && (
+        {((canBulkDelete && mode === 'lista' && selected.size > 0) || (canEdit && projectId)) && (
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setImporting(true)} icon={<Upload className="h-4 w-4" />}>
-              Importar Excel
-            </Button>
-            <Button onClick={() => setCreating(true)} icon={<Plus className="h-4 w-4" />}>Nova tarefa</Button>
+            {canBulkDelete && mode === 'lista' && selected.size > 0 && (
+              <Button
+                variant="danger"
+                onClick={() => setConfirmBulkDelete(true)}
+                icon={<Trash2 className="h-4 w-4" />}
+              >
+                Excluir selecionadas ({selected.size})
+              </Button>
+            )}
+            {canEdit && projectId && (
+              <>
+                <Button variant="secondary" onClick={() => setImporting(true)} icon={<Upload className="h-4 w-4" />}>
+                  Importar Excel
+                </Button>
+                <Button onClick={() => setCreating(true)} icon={<Plus className="h-4 w-4" />}>Nova tarefa</Button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -262,6 +345,25 @@ export function TaskList({
           projectId={editing.project_id}
           task={editing}
           canEdit={canEdit}
+        />
+      )}
+
+      {canBulkDelete && (
+        <ConfirmDialog
+          open={confirmBulkDelete}
+          onClose={() => setConfirmBulkDelete(false)}
+          onConfirm={() => bulkDelete.mutate()}
+          loading={bulkDelete.isPending}
+          title="Excluir tarefas selecionadas"
+          confirmLabel="Excluir"
+          confirmText={String(selected.size)}
+          description={
+            <>
+              {selected.size} tarefa(s) sera(ao) excluida(s) permanentemente, junto com suas
+              subtarefas, dependencias e checklist. O evento fica registrado na trilha de
+              auditoria.
+            </>
+          }
         />
       )}
     </>

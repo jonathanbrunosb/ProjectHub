@@ -53,7 +53,8 @@ export type Capability =
   | 'project.change_owner'
   | 'project.change_organizational_scope'
   | 'project.change_baseline'
-  | 'project.change_code';
+  | 'project.change_code'
+  | 'tasks.bulk_delete';
 
 const matrix: Record<Capability, RoleKey[]> = {
   'portfolio.manage': ['admin', 'pmo'],
@@ -83,6 +84,10 @@ const matrix: Record<Capability, RoleKey[]> = {
   // decisoes, riscos ja compartilhados) - diferente das demais trocas de
   // governanca, so' Admin corrige, nem PMO.
   'project.change_code': ['admin'],
+  // Exclusao em massa em "Tarefas & Entregas" e' correcao de cadastro
+  // indevido, nao rotina operacional - Owner/Collaborator continuam
+  // excluindo tarefa a tarefa via project.write (TaskModal), sem mudanca.
+  'tasks.bulk_delete': ['admin'],
 };
 
 const AuthContext = createContext<AuthApi | null>(null);

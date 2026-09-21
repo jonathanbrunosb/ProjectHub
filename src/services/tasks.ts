@@ -61,6 +61,19 @@ export async function deleteTask(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Exclusao em massa (tela "Tarefas & Entregas", restrita a Admin via
+ * capability tasks.bulk_delete) - mesma operacao de deleteTask repetida em
+ * lote numa unica requisicao. RLS/gatilhos (cascata de subtarefas,
+ * dependencias, checklist, trilha de auditoria) aplicam por linha, igual ao
+ * delete individual.
+ */
+export async function bulkDeleteTasks(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase.from('tasks').delete().in('id', ids);
+  if (error) throw error;
+}
+
 /** Proximo codigo sequencial da tarefa dentro do projeto (T001, T002, ...). */
 export async function nextTaskCode(projectId: string): Promise<string> {
   const { data, error } = await supabase
