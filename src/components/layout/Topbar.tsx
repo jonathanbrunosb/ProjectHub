@@ -6,6 +6,7 @@ import { Popover, PopoverItem } from '@/components/ui/Popover';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { EnvironmentBadge } from '@/components/ui/EnvironmentBadge';
+import { GlobalSearch } from '@/components/search/GlobalSearch';
 import { useTheme } from '@/app/ThemeProvider';
 import { useAuth } from '@/app/AuthProvider';
 import { roleLabel } from '@/utils/domain-labels';
@@ -37,6 +38,8 @@ export function Topbar({ onOpenMenu, breadcrumbs }: { onOpenMenu: () => void; br
       </Button>
 
       <div className="min-w-0 flex-1">{breadcrumbs}</div>
+
+      <GlobalSearch />
 
       <EnvironmentBadge className="hidden sm:inline-flex" />
       <EnvironmentBadge compact className="sm:hidden" />
