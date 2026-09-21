@@ -644,3 +644,34 @@ Segue deliberadamente sem ação, não é uma pendência:
 plataforma — cada uma faz sua própria checagem de papel internamente, mesmo padrão
 desde a `0011`.
 
+## Otimização de performance aplicada
+
+Levantamento via `get_advisors` (categoria *performance*) em QA/PRD, primeira vez
+rodado desde o hardening de segurança — corrigido em
+`20260921120000_rls_performance_and_missing_indexes.sql`:
+
+- **29 políticas RLS reescritas com `(select auth.uid())`** no lugar de `auth.uid()`
+  direto no predicado (`auth_rls_initplan`) — sem isso, o Postgres reavalia a chamada
+  **linha a linha** em vez de uma vez por query. Imperceptível no volume atual (dezenas
+  de linhas por tabela), vira gargalo real conforme o portfólio cresce. Políticas que só
+  chamam funções `app.*` (`app.is_admin()` etc.) não precisaram de ajuste — o advisor só
+  sinaliza chamada direta a `auth.*` no texto do predicado.
+- **27 índices de cobertura criados para foreign keys que não tinham** (`comments.created_by`,
+  `notifications.project_id`, `tasks.phase_id` e outras 24) — sem índice, join e
+  `on delete` de cada FK fazem sequential scan.
+- **6 tabelas com políticas `PERMISSIVE` duplicadas consolidadas**
+  (`multiple_permissive_policies`): em 5 casos (`app_environment`, `health_rules`,
+  `system_settings`, `goal_score_periods`, `goal_score_snapshot_items`) a política
+  `_write` (`FOR ALL`, que já inclui `SELECT`) sobrepunha a `_read` — dividida em
+  INSERT/UPDATE/DELETE explícitos, sem duplicar o `SELECT`. No sexto caso (`decisions`,
+  duas políticas de UPDATE) as duas condições foram fundidas num `OR` de uma política só.
+
+Validado rodando a suíte completa de testes de banco (RLS + regras de negócio +
+ambiente) localmente antes de aplicar — nenhuma mudança de comportamento, só de plano
+de execução.
+
+**Deliberadamente não mexido**: os ~35 índices que o advisor lista como "nunca usados"
+(`unused_index`) — boa parte foi criada nesta mesma leva de features (webhook, e-mail),
+ainda sem uso só pelo volume baixo de dados, não porque sejam inúteis. Remover agora
+seria tirar controle antes de saber se vai ser necessário.
+
