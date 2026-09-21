@@ -653,9 +653,13 @@ só uma questão de usabilidade: várias políticas RLS de leitura usam
 aplicada"), então uma conta autoregistrada com papel `viewer` conseguia ler boa parte
 do portfólio sem nenhuma triagem. Remover a tela reduz a superfície, mas não fecha o
 endpoint em si: `supabase.auth.signUp()` continua aceito pela API porque a chave
-`anon` é pública no bundle. **Ação manual pendente**, mesma categoria do
-`auth_leaked_password_protection` acima: desabilitar `Authentication → Sign In /
-Providers → Email → Allow new users to sign up` em QA e PRD.
+`anon` é pública no bundle.
+
+**Resolvido em QA e PRD**: `Authentication → Sign In / Providers → Email → Allow
+new users to sign up` desabilitado nos dois painéis (confirmado visualmente, mesmo
+padrão do `auth_leaked_password_protection` acima — não aparece em `get_advisors`
+por ser flag do serviço Auth, não achado de schema). Com isso, o cadastro público
+está fechado nas duas camadas: UI (rota removida) e API (endpoint rejeita).
 
 ## Otimização de performance aplicada
 
