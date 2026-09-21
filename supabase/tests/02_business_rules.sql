@@ -311,10 +311,18 @@ values ('fechamento_mensal','Janela de teste', current_date + 9, current_date + 
 insert into public.milestones (project_id, name, due_date, is_critical)
 values ('99999999-9999-4999-8999-000000000001','Go-live em janela critica', current_date + 10, true);
 
+-- Filtra tambem por event_name: o seed cria janelas contabeis recorrentes
+-- (fechamento mensal/trimestral/anual) que podem legitimamente se sobrepor
+-- a "current_date + 10" dependendo do dia do ano em que o teste roda (ex.:
+-- current_date+10 caindo no fechamento trimestral quando o teste roda perto
+-- da virada de trimestre) - sem esse filtro, o count conta tambem esses
+-- conflitos reais e nao-relacionados, quebrando o teste por coincidencia de
+-- data em vez de por regressao de verdade.
 select pg_temp.assert(
   (select count(*) from public.v_calendar_conflicts
     where project_id = '99999999-9999-4999-8999-000000000001'
-      and milestone_name = 'Go-live em janela critica') = 1,
+      and milestone_name = 'Go-live em janela critica'
+      and event_name = 'Janela de teste') = 1,
   'marco dentro de janela critica aparece como conflito de calendario');
 
 select pg_temp.assert_raises(
