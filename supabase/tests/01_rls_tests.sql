@@ -68,6 +68,11 @@ select pg_temp.login('admin@pmocontabil.dev');
 select pg_temp.assert((select count(*) from public.projects) = 6, 'admin le todos os 6 projetos');
 select pg_temp.assert((select count(*) from public.application_audit_log) > 0, 'admin le a trilha de auditoria');
 select pg_temp.assert(app.is_admin(), 'admin reconhecido como admin');
+update public.projects set code = 'CTB-2026-001-FIX' where code = 'CTB-2026-001';
+select pg_temp.assert(
+  (select count(*) from public.projects where code = 'CTB-2026-001-FIX') = 1,
+  'admin corrige o codigo do projeto');
+update public.projects set code = 'CTB-2026-001' where code = 'CTB-2026-001-FIX';
 
 -- -----------------------------------------------------------------------------
 -- PMO: leitura corporativa e escrita no portfolio
@@ -76,6 +81,11 @@ select pg_temp.login('pmo@pmocontabil.dev');
 select pg_temp.assert((select count(*) from public.projects) = 6, 'PMO le todo o portfolio');
 select pg_temp.assert(app.is_portfolio_manager(), 'PMO e gestor de portfolio');
 select pg_temp.assert(app.can_write_project('31313131-3131-4131-8131-000000000002'), 'PMO escreve em qualquer projeto');
+-- Codigo do projeto e' a UNICA troca de governanca restrita a Admin (nem PMO
+-- altera) - diferente de sponsor/owner/escopo organizacional/baseline (0024).
+select pg_temp.assert_denied(
+  $q$ update public.projects set code = 'PMO-HACK' where code = 'CTB-2026-001' $q$,
+  'PMO nao altera o codigo do projeto');
 
 -- -----------------------------------------------------------------------------
 -- AUDITOR: le tudo (inclusive trilha), mas nao escreve
@@ -119,6 +129,9 @@ update public.tasks set progress = 40 where project_id = '31313131-3131-4131-813
 select pg_temp.assert(
   (select progress from public.tasks where project_id = '31313131-3131-4131-8131-000000000001' and code = 'T005') = 40,
   'owner1 atualiza tarefa do proprio projeto');
+select pg_temp.assert_denied(
+  $q$ update public.projects set code = 'OWNER-HACK' where code = 'CTB-2026-001' $q$,
+  'owner1 nao altera o codigo do proprio projeto (so Admin)');
 
 -- -----------------------------------------------------------------------------
 -- COLABORADOR: escreve nos projetos em que participa, nao gerencia
