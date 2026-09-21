@@ -719,3 +719,35 @@ Validado: teste de RLS confirmando que PMO e o próprio Owner são negados e Adm
 (`EditProjectModal.test.tsx`), typecheck, lint, suíte completa (335 testes) e build de
 produção, todos verdes.
 
+## Exclusão em massa em "Tarefas & Entregas" (Admin)
+
+Admin pode selecionar várias linhas na tela "Tarefas & Entregas" (visão corporativa em
+`/tarefas` e a aba Tarefas dentro de um projeto) e excluir todas de uma vez — para
+corrigir cadastro indevido em lote, sem precisar abrir tarefa por tarefa. Antes só
+existia exclusão individual (`TaskModal`, já disponível a Owner/Collaborator/PMO/Admin
+via `project.write`, sem mudança).
+
+Capability nova `tasks.bulk_delete`, restrita a Admin — mesmo critério do
+`project.change_code`: operação rara e de alto impacto (mistura tarefas de qualquer
+projeto do portfólio na tela corporativa), não rotina de Owner/Collaborator. Não exigiu
+guard novo no banco: a RLS de `tasks_delete` (`0011`, `app.can_write_project`) já
+permitia Admin excluir qualquer tarefa — a novidade é só a superfície de UI (seleção +
+botão), sem abrir nenhum acesso que não existisse antes. `bulkDeleteTasks()`
+(`src/services/tasks.ts`) é um `DELETE ... WHERE id IN (...)` só — cascata de
+subtarefas/dependências/checklist e trilha de auditoria aplicam por linha, igual ao
+delete individual. Confirmação exige digitar a quantidade de itens selecionados
+(`ConfirmDialog`), mesmo padrão de proteção contra clique acidental usado em ações
+destrutivas no app.
+
+**Bug encontrado e corrigido durante a implementação**: o cabeçalho de coluna do
+`DataTable` (`src/components/ui/DataTable.tsx`) envolvia todo header — inclusive
+colunas não ordenáveis — num `<button disabled>` para o toggle de ordenação. Isso
+bloqueava clique em qualquer controle interativo aninhado no header (o checkbox de
+"selecionar todas"), um problema latente que afetaria qualquer coluna futura nessa
+situação, não só esta. Corrigido: o wrapper `<button>` só aparece quando a coluna é
+de fato ordenável.
+
+Validado: suíte nova (`TaskList.test.tsx`) cobrindo capability, seleção, digitação da
+quantidade antes de excluir, e que o clique no checkbox não abre o modal de edição da
+linha; suíte completa (339 testes), typecheck, lint e build de produção, todos verdes.
+

@@ -234,20 +234,24 @@ export function DataTable<T extends object>({
                           pinned === 'left' && 'sticky left-0 z-20 bg-surface-2',
                         )}
                       >
-                        {header.isPlaceholder ? null : (
+                        {header.isPlaceholder ? null : canSort ? (
                           <button
                             type="button"
-                            className={cn('inline-flex items-center gap-1', canSort && 'hover:text-fg')}
-                            onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                            disabled={!canSort}
+                            className="inline-flex items-center gap-1 hover:text-fg"
+                            onClick={header.column.getToggleSortingHandler()}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
-                            {canSort && (
-                              sorted === 'asc' ? <ArrowUp className="h-3 w-3" />
-                                : sorted === 'desc' ? <ArrowDown className="h-3 w-3" />
-                                  : <ChevronsUpDown className="h-3 w-3 opacity-40" />
-                            )}
+                            {sorted === 'asc' ? <ArrowUp className="h-3 w-3" />
+                              : sorted === 'desc' ? <ArrowDown className="h-3 w-3" />
+                                : <ChevronsUpDown className="h-3 w-3 opacity-40" />}
                           </button>
+                        ) : (
+                          // Sem wrapper de <button> (mesmo desabilitado): um <button disabled>
+                          // bloqueia clique em controles interativos aninhados no header (ex.:
+                          // checkbox de "selecionar todas" na coluna de exclusao em massa).
+                          <div className="inline-flex items-center gap-1">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
                         )}
                         {header.column.getCanResize() && (
                           <span
