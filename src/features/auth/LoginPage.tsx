@@ -177,11 +177,6 @@ export function LoginPage() {
               <Button type="submit" size="lg" className="w-full justify-center rounded-xl" loading={submitting} disabled={!configured}>
                 Entrar
               </Button>
-
-              <p className="text-center text-sm text-muted">
-                Ainda nao tem conta?{' '}
-                <Link to="/cadastro" className="text-brand hover:underline">Criar conta</Link>
-              </p>
             </form>
           </div>
         </div>

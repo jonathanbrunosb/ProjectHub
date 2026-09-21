@@ -5,7 +5,6 @@ import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { Spinner } from '@/components/ui/Feedback';
 import { useEnvironment } from '@/app/EnvironmentProvider';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { SignupPage } from '@/features/auth/SignupPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { MfaChallengePage } from '@/features/auth/MfaChallengePage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
@@ -41,7 +40,6 @@ export function App() {
       <Suspense key={environment} fallback={<Spinner />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/cadastro" element={<SignupPage />} />
           <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
           <Route path="/mfa" element={<MfaChallengePage />} />
           <Route element={<ProtectedRoute />}>
