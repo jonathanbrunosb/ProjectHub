@@ -479,7 +479,9 @@ restrita a Admin/PMO. `public.refresh_all_health()` segue disparada manualmente
 (Configurações → Sistema); agendá-la também é um passo simples e independente, se algum
 dia fizer sentido.
 
-A arquitetura de notificação já contempla canais `email`, `teams` e `webhook` no enum.
+A arquitetura de notificação já contempla canais `email`, `teams` e `webhook` no enum
+(`teams` cobre-se hoje pelo webhook genérico apontando pro Incoming Webhook do Teams — não
+tem canal nativo próprio).
 
 **Webhook genérico (entrega externa).** Configurável em `Configurações → Integrações`
 (Admin): URL de destino + segredo opcional para assinatura HMAC-SHA256 (header
@@ -502,6 +504,29 @@ esperar o próximo ciclo.
 - **Segredo nunca sai da tabela de configuração:** fica fora da trilha de auditoria (só
   `enabled`/`url` são registrados em `config_change`) e a leitura de `webhook_config` é
   restrita a Admin via RLS.
+
+**E-mail (entrega externa, via Resend).** Mesma arquitetura do webhook, mesmo lugar na
+tela (`Configurações → Integrações`, Admin): API key da Resend + remetente verificado +
+URL base opcional do app (para montar o link completo no corpo do e-mail — sem ela, o
+e-mail traz só o caminho relativo, ex. `/projetos/<id>/tarefas`). Requer um domínio de
+envio verificado na conta Resend antes de funcionar (o campo "Remetente" só aceita
+endereço desse domínio) — passo fora do escopo desta migration, feito direto no painel da
+Resend.
+
+- **Transporte:** também `pg_net`, um POST único para `https://api.resend.com/emails`
+  (`app.send_email`), despachado por `app.dispatch_email_notifications()` no mesmo ciclo
+  de `app.run_alert_engine()` — sem Edge Function nova, sem cron adicional, mesmo guard de
+  ambiente do webhook.
+- **Destinatário:** o `email` do perfil dono da notificação (`notifications.profile_id`),
+  restrito a perfis `active`. Não há preferência de opt-out por usuário nesta primeira
+  versão — é liga/desliga global, como o webhook; se algum dia isso incomodar (ex.: alguém
+  que só quer o alerta in-app), vale considerar uma coluna de preferência em `profiles`.
+- **Fire-and-forget, igual ao webhook:** `notifications.email_delivered_at` marca
+  enfileiramento, não confirmação de entrega. Sem retry nem alerta de bounce.
+- **API key nunca sai da tabela de configuração:** mesmo tratamento do segredo do
+  webhook — fora da trilha de auditoria, leitura restrita a Admin via RLS.
+- **Botão de teste** (`public.test_email_delivery()`) envia para o e-mail de quem está
+  logado, sem esperar uma notificação real nem o próximo ciclo do motor de alertas.
 
 ## Pendências conhecidas
 

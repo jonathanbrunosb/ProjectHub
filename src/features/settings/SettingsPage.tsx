@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
   Plus, Trash2, RefreshCw, ShieldCheck, KeyRound, Pencil, UserX, UserCheck, Wallet, CalendarDays,
-  Building2, Link2, Users, Webhook, Send, Eye, EyeOff,
+  Building2, Link2, Users, Webhook, Send, Eye, EyeOff, Mail,
 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -35,6 +35,7 @@ import {
 } from '@/services/areas';
 import { setFinancialModuleEnabled } from '@/services/systemSettings';
 import { getWebhookConfig, saveWebhookConfig, testWebhookDelivery } from '@/services/webhooks';
+import { getEmailNotificationConfig, saveEmailNotificationConfig, testEmailDelivery } from '@/services/emailNotifications';
 import { createHoliday, deleteHoliday, listHolidays } from '@/services/goalIndicators';
 import { refreshAllHealth } from '@/services/governance';
 import { createUser, resetUserPassword, deleteUser, type CreateUserResult, type ResetPasswordResult } from '@/services/adminUsers';
@@ -1888,13 +1889,29 @@ export function IntegrationsTab() {
   const [form, setForm] = useState({ url: '', secret: '', enabled: false });
   const [dirty, setDirty] = useState(false);
 
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [emailForm, setEmailForm] = useState({ apiKey: '', fromEmail: '', appBaseUrl: '', enabled: false });
+  const [emailDirty, setEmailDirty] = useState(false);
+
   const query = useQuery({ queryKey: ['webhook-config'], queryFn: getWebhookConfig });
+  const emailQuery = useQuery({ queryKey: ['email-notification-config'], queryFn: getEmailNotificationConfig });
 
   useEffect(() => {
     if (!query.data || dirty) return;
     setForm({ url: query.data.url ?? '', secret: query.data.secret ?? '', enabled: query.data.enabled });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
+
+  useEffect(() => {
+    if (!emailQuery.data || emailDirty) return;
+    setEmailForm({
+      apiKey: emailQuery.data.api_key ?? '',
+      fromEmail: emailQuery.data.from_email ?? '',
+      appBaseUrl: emailQuery.data.app_base_url ?? '',
+      enabled: emailQuery.data.enabled,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailQuery.data]);
 
   const save = useMutation({
     mutationFn: () => saveWebhookConfig(form),
@@ -1912,8 +1929,25 @@ export function IntegrationsTab() {
     onError: (e) => toast.error('Nao foi possivel enviar o teste', describeError(e)),
   });
 
-  if (query.isLoading) return <Spinner />;
+  const saveEmail = useMutation({
+    mutationFn: () => saveEmailNotificationConfig(emailForm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-notification-config'] });
+      setEmailDirty(false);
+      toast.success('E-mail salvo', 'A configuracao foi registrada na trilha de auditoria.');
+    },
+    onError: (e) => toast.error('Nao foi possivel salvar', describeError(e)),
+  });
+
+  const testEmail = useMutation({
+    mutationFn: testEmailDelivery,
+    onSuccess: () => toast.success('Teste enviado', 'Verifique sua caixa de entrada - o envio e assincrono, sem confirmacao de entrega aqui.'),
+    onError: (e) => toast.error('Nao foi possivel enviar o teste', describeError(e)),
+  });
+
+  if (query.isLoading || emailQuery.isLoading) return <Spinner />;
   if (query.isError) return <ErrorState message={describeError(query.error)} />;
+  if (emailQuery.isError) return <ErrorState message={describeError(emailQuery.error)} />;
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -1989,6 +2023,89 @@ export function IntegrationsTab() {
           </Button>
         </div>
         {dirty && (
+          <p className="mt-2 text-xs text-muted">Salve as alteracoes antes de enviar um teste.</p>
+        )}
+      </section>
+
+      <section className="card p-4 lg:col-span-2">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <Mail className="h-4 w-4" /> Notificacoes por e-mail
+        </h2>
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          Envia um e-mail para o responsavel a cada notificacao gerada pelo motor de alertas
+          (tarefa vencida, risco critico sem plano, plano de acao vencido), usando a API da
+          Resend. Roda dentro do mesmo ciclo diario do motor de alertas (ou imediatamente ao
+          testar abaixo). Requer um dominio de envio verificado na Resend - o campo
+          &quot;Remetente&quot; so funciona com um endereco desse dominio.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Remetente (from)" className="sm:col-span-2">
+            <Input
+              type="email"
+              placeholder="notificacoes@seudominio.com"
+              value={emailForm.fromEmail}
+              onChange={(e) => { setEmailForm((f) => ({ ...f, fromEmail: e.target.value })); setEmailDirty(true); }}
+            />
+          </Field>
+          <Field label="API key (Resend)" className="sm:col-span-2">
+            <div className="relative">
+              <Input
+                type={showApiKey ? 'text' : 'password'}
+                placeholder="re_..."
+                value={emailForm.apiKey}
+                onChange={(e) => { setEmailForm((f) => ({ ...f, apiKey: e.target.value })); setEmailDirty(true); }}
+                className="pr-9"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
+                aria-label={showApiKey ? 'Ocultar API key' : 'Mostrar API key'}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </Field>
+          <Field label="URL base do app (opcional, para o link no e-mail)" className="sm:col-span-2">
+            <Input
+              type="url"
+              placeholder="https://app.seudominio.com"
+              value={emailForm.appBaseUrl}
+              onChange={(e) => { setEmailForm((f) => ({ ...f, appBaseUrl: e.target.value })); setEmailDirty(true); }}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-lg bg-surface-2 p-3">
+          <div>
+            <p className="text-sm font-medium">{emailForm.enabled ? 'Ativo' : 'Inativo'}</p>
+            <p className="text-xs text-muted">Notificacoes so sao enviadas por e-mail com o canal ativo, API key e remetente salvos.</p>
+          </div>
+          <Button
+            variant={emailForm.enabled ? 'secondary' : 'primary'}
+            size="sm"
+            onClick={() => { setEmailForm((f) => ({ ...f, enabled: !f.enabled })); setEmailDirty(true); }}
+          >
+            {emailForm.enabled ? 'Desativar' : 'Ativar'}
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => saveEmail.mutate()} loading={saveEmail.isPending} disabled={!emailDirty}>
+            Salvar
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => testEmail.mutate()}
+            loading={testEmail.isPending}
+            disabled={emailDirty || !emailQuery.data?.api_key || !emailQuery.data?.from_email}
+            icon={<Send className="h-4 w-4" />}
+          >
+            Enviar teste
+          </Button>
+        </div>
+        {emailDirty && (
           <p className="mt-2 text-xs text-muted">Salve as alteracoes antes de enviar um teste.</p>
         )}
       </section>
