@@ -33,7 +33,7 @@ async function extractFunctionErrorMessage(error: unknown): Promise<string> {
  *
  * Se falhar por qualquer motivo (funcao nao implantada/configurada ainda,
  * conta sem permissao, ambiente de destino fora do ar), quem chama deve cair
- * no fluxo manual de login/cadastro - esse e' o "cenario reservo", nunca o
+ * no fluxo manual de login - esse e' o "cenario reservo", nunca o
  * caminho padrao.
  */
 export async function bridgeEnvironmentLogin(

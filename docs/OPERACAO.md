@@ -644,6 +644,19 @@ Segue deliberadamente sem ação, não é uma pendência:
 plataforma — cada uma faz sua própria checagem de papel internamente, mesmo padrão
 desde a `0011`.
 
+**Cadastro público (self-signup) removido.** A rota `/cadastro`, a `SignupPage`, o
+link "Criar conta" na tela de login e o método `signUp` do `AuthProvider` foram
+excluídos — o único caminho de criação de conta agora é o administrativo
+(`admin-create-user`, gated por `service_role`, em Configurações → Usuários). Não era
+só uma questão de usabilidade: várias políticas RLS de leitura usam
+`auth.uid() is not null` sem filtro por empresa (ver "Otimização de performance
+aplicada"), então uma conta autoregistrada com papel `viewer` conseguia ler boa parte
+do portfólio sem nenhuma triagem. Remover a tela reduz a superfície, mas não fecha o
+endpoint em si: `supabase.auth.signUp()` continua aceito pela API porque a chave
+`anon` é pública no bundle. **Ação manual pendente**, mesma categoria do
+`auth_leaked_password_protection` acima: desabilitar `Authentication → Sign In /
+Providers → Email → Allow new users to sign up` em QA e PRD.
+
 ## Otimização de performance aplicada
 
 Levantamento via `get_advisors` (categoria *performance*) em QA/PRD, primeira vez

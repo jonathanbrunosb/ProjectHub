@@ -70,7 +70,7 @@ export function ProductLockup({ size = 'md', className }: { size?: keyof typeof 
 
 /**
  * Hierarquia completa Grupo Equatorial -> ProjectHub -> tagline, empilhada,
- * para o painel institucional da tela de login/cadastro.
+ * para o painel institucional da tela de login.
  */
 export function BrandHeader({ logoClassName, className }: { logoClassName?: string; className?: string }) {
   return (

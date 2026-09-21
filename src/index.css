@@ -67,7 +67,7 @@
 
   /*
    * Forca os tokens de tema claro dentro do escopo, mesmo com `.dark` ativo
-   * em <html> (tela de login/cadastro: o painel do formulario e' sempre
+   * em <html> (tela de login: o painel do formulario e' sempre
    * claro por design, independente da preferencia de tema do usuario).
    */
   .theme-light-scope {

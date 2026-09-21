@@ -18,8 +18,6 @@ interface AuthApi {
    */
   mfaPending: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  /** Retorna true se a sessao ja veio autenticada (confirmacao de e-mail desligada). */
-  signUp: (email: string, password: string, fullName: string) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   /** Dispara o e-mail com o codigo de recuperacao. Nao revela se o e-mail existe. */
   requestPasswordReset: (email: string) => Promise<void>;
@@ -161,16 +159,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       await logAppEvent('login', 'auth');
-    },
-    signUp: async (email, password, fullName) => {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
-      });
-      if (error) throw error;
-      // Sem sessao ativa apos o signUp = projeto exige confirmacao de e-mail.
-      return { needsEmailConfirmation: !data.session };
     },
     signOut: async () => {
       await logAppEvent('logout', 'auth');
