@@ -435,6 +435,14 @@ export interface WebhookConfig {
   enabled: boolean;
 }
 
+/** Configuracao do canal de e-mail (Resend) de entrega externa de notificacoes (linha unica). */
+export interface EmailNotificationConfig {
+  api_key: string | null;
+  from_email: string | null;
+  app_base_url: string | null;
+  enabled: boolean;
+}
+
 // --- Indicadores de Metas (nota de aderencia a prazo das entregas) ---------
 
 export type GoalDayBasis = 'uteis' | 'corridos';
