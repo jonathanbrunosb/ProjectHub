@@ -751,3 +751,29 @@ Validado: suíte nova (`TaskList.test.tsx`) cobrindo capability, seleção, digi
 quantidade antes de excluir, e que o clique no checkbox não abre o modal de edição da
 linha; suíte completa (339 testes), typecheck, lint e build de produção, todos verdes.
 
+## Ambiente QA pausado (redução de custo)
+
+A organização Supabase ("Contabilidade-Equatorial", plano Pro) hospeda 3 projetos: QA e
+PRD do ProjectHub, e o `monitor-controles-horas` (outro sistema, não relacionado). O
+plano Pro cobre o compute de 1 projeto na mensalidade base — cada projeto adicional
+ativo soma custo próprio. Com PRD já em produção e o QA sem uso que justificasse manter
+rodando, o projeto QA (`mhmlcnylugoutzadiwww`) foi **pausado** (não excluído) para
+eliminar essa cobrança.
+
+**Decisão de arquitetura "QA e PRD são bancos separados" (`AMBIENTES.md`) não muda** —
+só a instância de QA está dormente, não a separação física. Reativar é `Restore
+project` no painel Supabase, sem mudança de código.
+
+Ajuste necessário feito junto (sem isso, pausar QA travaria PRD também):
+`deploy-migrations.yml` tinha `migrate-prd` com `needs: migrate-qa` — se o job de QA
+falhasse (projeto pausado), o job de PRD nunca chegava a rodar, nem para a aprovação
+manual. O job de QA foi removido do workflow; PRD roda direto, com o mesmo gate manual
+de sempre (`environment: production`). Isso não reduz a validação real: o job
+`database` do `ci.yml` já sobe um Postgres efêmero do zero e roda schema + seed + toda
+a suíte de testes (RLS, regras de negócio, ambiente) em todo push/PR — nunca dependeu
+do QA hospedado estar de pé, servia só para "ver rodando" numa instância real.
+
+Fica sabido, não corrigido agora (baixo risco, fora do escopo desta mudança): o
+seletor "Alterna QA/PRD" (Configurações → Usuários) continua na tela e vai dar erro de
+conexão se alguém trocar para QA — esperado enquanto pausado.
+

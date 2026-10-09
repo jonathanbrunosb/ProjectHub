@@ -24,6 +24,19 @@ duas execuções de migration, dois conjuntos de segredos) e está documentado a
 
 **Regra final: QA nunca pode contaminar PRD. PRD nunca pode depender de QA.**
 
+> **Status atual: projeto QA pausado (não excluído).** Mantido na mesma organização
+> Supabase que PRD e o `monitor-controles-horas`, custava compute como 3º projeto ativo
+> no plano Pro sem uso que justificasse manter rodando — ver "Ambientes QA e PRD" em
+> `OPERACAO.md`. A decisão de arquitetura acima (bancos separados) continua valendo;
+> só a instância de QA está dormente. Reativar é um clique no painel Supabase
+> (`Restore project`) — nada aqui precisa mudar para isso. Enquanto pausado:
+> - `deploy-migrations.yml` não tenta mais aplicar em QA (removido do workflow).
+> - O seletor "Alterna QA/PRD" (Configurações → Usuários) ainda existe na tela, mas
+>   quem trocar para QA vai bater em erro de conexão — é esperado, não é bug.
+> - A validação de schema/RLS/regras de negócio continua acontecendo normalmente a
+>   cada push/PR, contra um Postgres efêmero no próprio CI (`ci.yml`, job `database`) —
+>   nunca dependeu do QA hospedado estar de pé.
+
 ## Como funciona no frontend
 
 ```
