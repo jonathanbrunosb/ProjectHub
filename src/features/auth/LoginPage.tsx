@@ -131,10 +131,6 @@ export function LoginPage() {
                   <p className="mt-0.5 text-muted">
                     Defina <code className="font-mono">VITE_SUPABASE_{environment}_URL</code> e{' '}
                     <code className="font-mono">VITE_SUPABASE_{environment}_ANON_KEY</code>{' '}
-                    {environment === 'QA' && (
-                      <>(ou <code className="font-mono">VITE_SUPABASE_URL</code> /{' '}
-                      <code className="font-mono">VITE_SUPABASE_ANON_KEY</code>) </>
-                    )}
                     antes do build.
                   </p>
                 </div>

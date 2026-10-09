@@ -44,12 +44,11 @@ npm ci
 
 # 2. Variáveis de ambiente (somente chaves públicas)
 cp .env.example .env.local
-#   VITE_SUPABASE_QA_URL=https://<projeto-qa>.supabase.co
-#   VITE_SUPABASE_QA_ANON_KEY=<anon de QA>
-#   VITE_SUPABASE_PRD_URL=https://<projeto-prd>.supabase.co     # opcional em dev
-#   VITE_SUPABASE_PRD_ANON_KEY=<anon de PRD>                    # opcional em dev
+#   VITE_SUPABASE_PRD_URL=https://<projeto-prd>.supabase.co
+#   VITE_SUPABASE_PRD_ANON_KEY=<anon de PRD>
 #
-#   VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY continuam valendo como QA.
+#   QA foi descontinuado (ver docs/OPERACAO.md) - VITE_SUPABASE_QA_* ficam
+#   vazios/comentados, a aplicação roda normalmente só com PRD.
 
 # 3. Banco de dados (Supabase CLI)
 supabase start
@@ -100,12 +99,11 @@ progressos, riscos, custos, owners e prazos distintos.
 
 1. **Settings → Pages → Source:** *GitHub Actions*.
 2. **Settings → Secrets and variables → Actions**, crie:
-   - `VITE_SUPABASE_QA_URL` e `VITE_SUPABASE_QA_ANON_KEY`
    - `VITE_SUPABASE_PRD_URL` e `VITE_SUPABASE_PRD_ANON_KEY`
 
-   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` seguem funcionando como QA, para não
-   quebrar instalações anteriores. O Vite inlineia os valores no build — **trocar um
-   segredo exige novo deploy**.
+   QA foi descontinuado (ver `docs/OPERACAO.md`) — `VITE_SUPABASE_QA_*` não são mais
+   necessários; sem eles, o ambiente QA simplesmente fica indisponível na UI. O Vite
+   inlineia os valores no build — **trocar um segredo exige novo deploy**.
 3. Faça push na `main`. O workflow `deploy.yml` builda, verifica a ausência de
    segredos no bundle e publica.
 
