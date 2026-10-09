@@ -1,11 +1,20 @@
-name: Aplicar migrations em QA/PRD
+name: Aplicar migrations em PRD
 
 # Fecha uma lacuna operacional real: ate aqui, migration mesclada em `main` so
-# chegava a QA/PRD quando alguem lembrava de aplicar manualmente (SQL Editor
-# ou Supabase CLI). Isso ja gerou schema divergente e silencioso entre `main`
-# e os bancos hospedados. QA aplica automaticamente a cada push; PRD exige
-# aprovacao manual via GitHub Environment (`production`) - nunca aplica
-# sozinho em producao.
+# chegava a PRD quando alguem lembrava de aplicar manualmente (SQL Editor ou
+# Supabase CLI). Isso ja gerou schema divergente e silencioso entre `main` e
+# o banco hospedado. PRD exige aprovacao manual via GitHub Environment
+# (`production`) - nunca aplica sozinho em producao.
+#
+# O projeto QA foi pausado (custo de compute de um 3o projeto Supabase na
+# mesma organizacao, sem uso que justificasse manter rodando - ver
+# OPERACAO.md e AMBIENTES.md). Isto ja removeu o job de aplicar migrations
+# em QA, que existia antes deste arquivo: a validacao real de schema nunca
+# dependeu dele, o job "database" do ci.yml ja sobe um Postgres efemero do
+# zero e roda schema + seed + toda a suite de testes (RLS, regras de
+# negocio, ambiente) em todo push/PR, antes de qualquer coisa chegar em
+# main. QA vivo so servia para "ver rodando" numa instancia hospedada real,
+# redundante com isso.
 #
 # So dispara quando supabase/migrations/** muda, para nao rodar a toa em
 # todo merge. `supabase db push` e idempotente: so aplica o que ainda nao
@@ -24,31 +33,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  migrate-qa:
-    name: QA
-    runs-on: ubuntu-latest
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Aplicar migrations pendentes em QA
-        # --db-url (pooler Supavisor, modo sessao) em vez de --project-ref/--password:
-        # a conexao direta (db.<ref>.supabase.co) so resolve em IPv6, que o runner do
-        # GitHub Actions nao suporta ("IPv6 is not supported on your current network").
-        # O pooler e' sempre IPv4. A connection string completa (com senha embutida)
-        # vem do proprio painel Supabase (Connect -> Session pooler), entao nao ha
-        # necessidade de adivinhar o shard aws-0/aws-1 do projeto.
-        run: |
-          supabase db push --yes --db-url "${{ secrets.SUPABASE_QA_DB_URL }}"
-
   migrate-prd:
     name: PRD (requer aprovacao manual)
-    needs: migrate-qa
     runs-on: ubuntu-latest
     # Environment "production" precisa existir no repo (Settings -> Environments)
     # com "Required reviewers" configurado - e o gate manual antes de tocar o
