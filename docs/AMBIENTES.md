@@ -24,15 +24,20 @@ duas execuções de migration, dois conjuntos de segredos) e está documentado a
 
 **Regra final: QA nunca pode contaminar PRD. PRD nunca pode depender de QA.**
 
-> **Status atual: projeto QA pausado (não excluído).** Mantido na mesma organização
-> Supabase que PRD e o `monitor-controles-horas`, custava compute como 3º projeto ativo
-> no plano Pro sem uso que justificasse manter rodando — ver "Ambientes QA e PRD" em
-> `OPERACAO.md`. A decisão de arquitetura acima (bancos separados) continua valendo;
-> só a instância de QA está dormente. Reativar é um clique no painel Supabase
-> (`Restore project`) — nada aqui precisa mudar para isso. Enquanto pausado:
+> **Status atual: projeto QA excluído.** Mantido até aqui na mesma organização Supabase
+> que PRD e o `monitor-controles-horas`, custava compute como 3º projeto ativo no plano
+> Pro sem uso que justificasse manter rodando — ver "Ambiente QA descontinuado" em
+> `OPERACAO.md`. **Pausar não era uma opção**: a API do Supabase recusa pausar projetos
+> fora do tier Free, e este já rodava no piso de custo (Nano); o org tem 3 projetos, o
+> Free permite 2 — não cabia. A decisão de arquitetura acima (bancos separados) segue
+> válida para o desenho do sistema; só não há hoje uma instância de QA provisionada.
+> Reprovisionar é criar um projeto Supabase novo e aplicar as migrations
+> (`supabase db push`) — não é "restaurar", é recriar do zero; o schema é o de sempre,
+> os dados fictícios não voltam sozinhos (nunca foram dados oficiais, não há perda real).
 > - `deploy-migrations.yml` não tenta mais aplicar em QA (removido do workflow).
-> - O seletor "Alterna QA/PRD" (Configurações → Usuários) ainda existe na tela, mas
->   quem trocar para QA vai bater em erro de conexão — é esperado, não é bug.
+> - O seletor "Alterna QA/PRD" (Configurações → Usuários) só mostra QA se
+>   `VITE_SUPABASE_QA_URL`/`VITE_SUPABASE_QA_ANON_KEY` estiverem configurados no build —
+>   sem eles, a opção some sozinha da UI (não há botão quebrado para alguém clicar).
 > - A validação de schema/RLS/regras de negócio continua acontecendo normalmente a
 >   cada push/PR, contra um Postgres efêmero no próprio CI (`ci.yml`, job `database`) —
 >   nunca dependeu do QA hospedado estar de pé.

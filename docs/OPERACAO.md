@@ -751,29 +751,50 @@ Validado: suíte nova (`TaskList.test.tsx`) cobrindo capability, seleção, digi
 quantidade antes de excluir, e que o clique no checkbox não abre o modal de edição da
 linha; suíte completa (339 testes), typecheck, lint e build de produção, todos verdes.
 
-## Ambiente QA pausado (redução de custo)
+## Ambiente QA descontinuado (redução de custo)
 
-A organização Supabase ("Contabilidade-Equatorial", plano Pro) hospeda 3 projetos: QA e
+A organização Supabase ("Contabilidade-Equatorial", plano Pro) hospedava 3 projetos: QA e
 PRD do ProjectHub, e o `monitor-controles-horas` (outro sistema, não relacionado). O
 plano Pro cobre o compute de 1 projeto na mensalidade base — cada projeto adicional
 ativo soma custo próprio. Com PRD já em produção e o QA sem uso que justificasse manter
-rodando, o projeto QA (`mhmlcnylugoutzadiwww`) foi **pausado** (não excluído) para
-eliminar essa cobrança.
+rodando, o projeto QA (`mhmlcnylugoutzadiwww`) foi **excluído**.
+
+**Pausar (reversível) foi avaliado primeiro e descartado — não por escolha, por
+restrição real da plataforma.** A API do Supabase recusa pausar projeto fora do tier
+Free (`"Project is not free-tier. Please downgrade it to free-tier first"`), e o
+seletor de Compute Size do painel não oferece opção Free dentro de uma organização Pro
+— o mais barato ali é Nano/Micro, ambos pagos (~$0,01344/hora). QA já rodava em Nano:
+não havia como baixar mais. E o Free, quando disponível, limita a 2 projetos por
+organização — esta tem 3. Não cabia. A única forma real de zerar o custo do QA era
+excluir o projeto.
 
 **Decisão de arquitetura "QA e PRD são bancos separados" (`AMBIENTES.md`) não muda** —
-só a instância de QA está dormente, não a separação física. Reativar é `Restore
-project` no painel Supabase, sem mudança de código.
+continua sendo o desenho correto do sistema. Só não há hoje uma instância de QA
+provisionada. Nenhum dado oficial foi perdido: QA sempre foi ambiente de teste, nunca
+guardou dado de produção (ver `AMBIENTES.md`). Reprovisionar, se um dia fizer sentido, é
+criar um projeto Supabase novo e aplicar as migrations — não existe "restaurar".
 
-Ajuste necessário feito junto (sem isso, pausar QA travaria PRD também):
+Ajuste necessário feito junto (sem isso, excluir QA travaria PRD também):
 `deploy-migrations.yml` tinha `migrate-prd` com `needs: migrate-qa` — se o job de QA
-falhasse (projeto pausado), o job de PRD nunca chegava a rodar, nem para a aprovação
+falhasse (projeto inexistente), o job de PRD nunca chegava a rodar, nem para a aprovação
 manual. O job de QA foi removido do workflow; PRD roda direto, com o mesmo gate manual
 de sempre (`environment: production`). Isso não reduz a validação real: o job
 `database` do `ci.yml` já sobe um Postgres efêmero do zero e roda schema + seed + toda
 a suíte de testes (RLS, regras de negócio, ambiente) em todo push/PR — nunca dependeu
 do QA hospedado estar de pé, servia só para "ver rodando" numa instância real.
 
-Fica sabido, não corrigido agora (baixo risco, fora do escopo desta mudança): o
-seletor "Alterna QA/PRD" (Configurações → Usuários) continua na tela e vai dar erro de
-conexão se alguém trocar para QA — esperado enquanto pausado.
+Limpeza de código feita junto, para não deixar referência morta a um projeto que não
+existe mais: `src/lib/supabase/client.ts` removeu o fallback que fazia o ambiente QA
+cair em `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` (essas variáveis apontavam para o
+mesmo projeto QA já excluído) — sem isso, `isEnvironmentConfigured('QA')` ficaria
+`true` apontando para um host morto, e quem tentasse trocar de ambiente bateria em erro
+de conexão. Agora QA fica corretamente `não configurado`: o seletor de ambiente
+(`EnvironmentSwitcher`, `AuthEnvironmentPicker`) já tratava esse caso — a opção QA
+simplesmente não aparece mais, sem precisar mexer na UI. `deploy.yml`, `.env.example` e
+`README.md` também atualizados para não pedir mais `VITE_SUPABASE_QA_*`.
+
+**Opcional, não crítico:** os secrets `SUPABASE_QA_DB_URL`, `VITE_SUPABASE_QA_URL`,
+`VITE_SUPABASE_QA_ANON_KEY`, `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no GitHub
+(Settings → Secrets and variables → Actions) ficaram sem uso — nada mais os lê, mas
+deixá-los não quebra nada. Removível quando for conveniente.
 

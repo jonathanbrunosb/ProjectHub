@@ -27,19 +27,19 @@ interface EnvironmentConfig {
   anonKey?: string;
 }
 
-// O projeto atual continua atendido pelas variaveis originais: sem as chaves
-// especificas de QA, ele e' o ambiente de QA. Isso mantem a aplicacao no ar
-// durante a transicao, sem exigir reconfiguracao imediata.
-//
-// Usa "||", nao "??": quando o segredo VITE_SUPABASE_QA_URL nao existe no
-// GitHub Actions, "${{ secrets.X }}" resolve para string vazia (nao omite a
-// variavel), entao import.meta.env.VITE_SUPABASE_QA_URL chega como "" - um
-// valor definido, so' que vazio. "??" so cai no fallback com null/undefined,
-// entao nunca alcancaria VITE_SUPABASE_URL enquanto o secret QA existir vazio.
+// O projeto Supabase de QA (mhmlcnylugoutzadiwww) foi excluido em definitivo
+// (custo de um 3o projeto na organizacao Pro, sem uso que justificasse manter
+// - ver OPERACAO.md e AMBIENTES.md). Antes, sem VITE_SUPABASE_QA_URL/KEY
+// definidos, o ambiente QA caia de volta nas variaveis originais
+// VITE_SUPABASE_URL/ANON_KEY (que apontavam para esse mesmo projeto) - esse
+// fallback foi removido porque so' reapontaria para um projeto que nao existe
+// mais. QA fica deliberadamente sem URL/chave configuradas: isEnvironmentConfigured
+// retorna false, e toda a UI (EnvironmentSwitcher, AuthEnvironmentPicker) ja'
+// trata ambiente nao configurado - nao exige nenhuma outra mudanca.
 const config: Record<Environment, EnvironmentConfig> = {
   QA: {
-    url: import.meta.env.VITE_SUPABASE_QA_URL || import.meta.env.VITE_SUPABASE_URL,
-    anonKey: import.meta.env.VITE_SUPABASE_QA_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
+    url: import.meta.env.VITE_SUPABASE_QA_URL,
+    anonKey: import.meta.env.VITE_SUPABASE_QA_ANON_KEY,
   },
   PRD: {
     url: import.meta.env.VITE_SUPABASE_PRD_URL,

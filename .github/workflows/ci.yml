@@ -48,43 +48,22 @@ jobs:
   database:
     name: Banco de dados (schema, seed, RLS, regras de negocio)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
-      - name: Instalar cliente PostgreSQL
+      - name: Iniciar o PostgreSQL ja instalado na imagem do runner
+        # O container de servico (`services: postgres: image: postgres:16`) puxava a
+        # imagem do Docker Hub anonimamente a cada run - sujeito ao rate limit
+        # ("toomanyrequests: You have reached your unauthenticated pull rate limit"),
+        # que passou a derrubar o job antes mesmo do checkout rodar. O runner
+        # ubuntu-24.04 ja vem com PostgreSQL pre-instalado como servico do sistema
+        # justamente para esse caso - nao depende de pull nenhum.
         shell: bash
         run: |
           set -euo pipefail
-          if command -v psql >/dev/null 2>&1; then
-            psql --version
-            exit 0
-          fi
-
-          # Atualiza apenas os repositorios oficiais do Ubuntu. Repositorios
-          # adicionais da imagem do runner (Chrome, Microsoft etc.) nao sao
-          # necessarios para os testes e podem tornar a instalacao instavel.
-          if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
-            sudo apt-get update \
-              -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
-              -o Dir::Etc::sourceparts="-"
-          else
-            sudo apt-get update \
-              -o Dir::Etc::sourcelist="sources.list" \
-              -o Dir::Etc::sourceparts="-"
-          fi
-          sudo apt-get install -y postgresql-client
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+          pg_isready -h localhost -p 5432
 
       - name: Aplicar migrations, seed e rodar os testes
         env:
